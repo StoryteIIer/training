@@ -1,5 +1,5 @@
 // Bump CACHE when you change any file, so the app refreshes instead of serving stale cache.
-const CACHE = "training-sheet-v1";
+const CACHE = "training-sheet-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -21,7 +21,6 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// Cache-first for our own assets; network fallback otherwise.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   e.respondWith(
