@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Training Sheet</title>
+
+<!-- PWA / iOS home-screen app -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#171a20">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Training">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+
+<style>
+  :root{
+    --bg:#171a20; --bg2:#1e222b; --card:#232833; --line:#333a47;
+    --chalk:#ecebe4; --chalk-dim:#a4a9b4; --chalk-faint:#6d7481;
+    --oak:#cf9a4f; --oak-deep:#a97a34; --done:#7fb47c; --shift:#d7a34a; --drop:#5b616d; --danger:#c76b5a;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg); color:var(--chalk); font-family:var(--sans); -webkit-font-smoothing:antialiased;
+    line-height:1.4; padding-bottom:env(safe-area-inset-bottom);}
+  .wrap{max-width:640px; margin:0 auto; min-height:100vh}
+
+  header{position:sticky; top:0; z-index:20; background:linear-gradient(180deg,var(--bg) 82%,transparent);
+    padding:calc(14px + env(safe-area-inset-top)) 16px 10px;}
+  .brand{display:flex; align-items:baseline; justify-content:space-between; gap:12px}
+  .brand h1{font-size:15px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; margin:0}
+  .brand h1 .mark{color:var(--oak)}
+  .weekline{font-family:var(--mono); font-size:12px; color:var(--chalk-dim)}
+  .modes{display:flex; gap:6px; margin-top:12px; background:var(--bg2); padding:4px; border-radius:11px}
+  .modes button{flex:1; border:0; background:transparent; color:var(--chalk-dim); font-family:var(--sans);
+    font-size:13px; font-weight:600; letter-spacing:.02em; padding:9px 8px; border-radius:8px; cursor:pointer;}
+  .modes button[aria-pressed="true"]{background:var(--card); color:var(--chalk); box-shadow:0 1px 0 #0003}
+
+  .weekstrip{display:flex; align-items:center; justify-content:space-between; gap:8px; margin:10px 16px 0;
+    background:var(--bg2); border:1px solid var(--line); border-radius:11px; padding:8px 10px;}
+  .weekstrip .lbl{font-family:var(--mono); font-size:12.5px; color:var(--chalk)}
+  .weekstrip .sub{font-family:var(--mono); font-size:11px; color:var(--chalk-faint)}
+  .weekstrip button{border:1px solid var(--line); background:var(--card); color:var(--chalk); width:34px; height:34px;
+    border-radius:9px; font-size:16px; cursor:pointer; line-height:1;}
+  .weekstrip .today{width:auto; padding:0 10px; font-size:11px; font-family:var(--mono); color:var(--oak); border-color:var(--oak-deep)}
+
+  .days{display:flex; gap:6px; padding:12px 16px 4px; overflow-x:auto}
+  .days button{flex:1 0 auto; min-width:92px; border:1px solid var(--line); background:var(--bg2); color:var(--chalk-dim);
+    border-radius:10px; padding:9px 6px; cursor:pointer;}
+  .days button .d{font-family:var(--mono); font-size:11px; letter-spacing:.05em; display:block}
+  .days button .t{font-size:12px; font-weight:600; display:block; margin-top:2px; color:var(--chalk-faint)}
+  .days button[aria-pressed="true"]{border-color:var(--oak-deep); background:var(--card)}
+  .days button[aria-pressed="true"] .d{color:var(--oak)}
+  .days button[aria-pressed="true"] .t{color:var(--chalk)}
+
+  main{padding:6px 16px 40px}
+  .block{margin-top:18px}
+  .block > .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--chalk-faint); display:flex; align-items:center; gap:10px; margin:0 2px 8px;}
+  .block > .eyebrow::after{content:""; flex:1; height:1px; background:var(--line)}
+  .empty{font-size:13px; color:var(--chalk-faint); font-style:italic; padding:10px 2px; border:1px dashed var(--line);
+    border-radius:10px; text-align:center;}
+
+  .ex{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 12px 12px 14px;
+    margin-bottom:8px; position:relative; overflow:hidden;}
+  .ex::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:transparent}
+  .ex.s-done::before{background:var(--done)}
+  .ex.s-shift::before{background:var(--shift)}
+  .ex.s-drop::before{background:var(--drop)}
+  .ex .top{display:flex; align-items:flex-start; gap:10px}
+  .ex .name{flex:1; text-align:left; background:none; border:0; color:var(--chalk); font-family:var(--sans);
+    font-size:15px; font-weight:550; padding:0; cursor:pointer; line-height:1.3;}
+  .ex.s-drop .name{color:var(--chalk-faint); text-decoration:line-through}
+  .ex .name .chev{color:var(--chalk-faint); font-size:12px; margin-left:6px}
+  .ex .note-has{color:var(--oak); font-size:11px; font-family:var(--mono)}
+  .pill{font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; padding:3px 7px;
+    border-radius:999px; white-space:nowrap; align-self:flex-start;}
+  .pill.done{background:#2c3a2b; color:var(--done)}
+  .pill.shift{background:#3a3120; color:var(--shift)}
+  .pill.drop{background:#2a2d34; color:var(--chalk-dim)}
+  .pill.moved-in{background:#3a3120; color:var(--shift)}
+  .peek{font-size:12.5px; color:var(--chalk-dim); margin-top:7px; line-height:1.45; display:-webkit-box;
+    -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+
+  .actions{display:flex; gap:6px; margin-top:11px; flex-wrap:wrap}
+  .actions button{font-family:var(--sans); font-size:12.5px; font-weight:600; border:1px solid var(--line);
+    background:var(--bg2); color:var(--chalk-dim); padding:7px 11px; border-radius:8px; cursor:pointer; min-height:34px;}
+  .actions button.act-done[aria-pressed="true"]{border-color:var(--done); color:var(--done); background:#212a20}
+  .actions button.act-drop[aria-pressed="true"]{border-color:var(--drop); color:var(--chalk-dim); background:#23262d}
+  .actions .move{display:flex; gap:6px; align-items:center; margin-left:auto}
+  .actions .move .to{font-family:var(--mono); font-size:11px; color:var(--chalk-faint)}
+  .actions .move button.mv[aria-pressed="true"]{border-color:var(--shift); color:var(--shift); background:#2f2818}
+  .actions .move button.mv{padding:7px 9px}
+
+  .footer{margin:26px 2px 0; display:flex; gap:8px; flex-wrap:wrap}
+  .footer button{font-family:var(--sans); font-size:12.5px; font-weight:600; color:var(--chalk-dim); background:var(--bg2);
+    border:1px solid var(--line); border-radius:9px; padding:9px 12px; cursor:pointer;}
+
+  .scrim{position:fixed; inset:0; background:#000a; z-index:40; display:none; align-items:flex-end; justify-content:center}
+  .scrim.open{display:flex}
+  .sheet{width:100%; max-width:640px; background:var(--bg2); border:1px solid var(--line); border-radius:16px 16px 0 0;
+    padding:16px 16px calc(18px + env(safe-area-inset-bottom)); max-height:86vh; display:flex; flex-direction:column;}
+  .sheet h2{font-size:16px; margin:2px 0 2px; font-weight:600}
+  .sheet .ctx{font-family:var(--mono); font-size:11px; color:var(--chalk-faint); letter-spacing:.04em; margin-bottom:12px}
+  .sheet textarea{flex:1; min-height:160px; resize:vertical; width:100%; background:var(--card); border:1px solid var(--line);
+    border-radius:10px; color:var(--chalk); font-family:var(--sans); font-size:15px; line-height:1.5; padding:12px;}
+  .sheet textarea:focus{outline:2px solid var(--oak-deep); outline-offset:1px}
+  .sheet .row{display:flex; gap:8px; margin-top:12px}
+  .sheet .row button{flex:1; font-family:var(--sans); font-size:14px; font-weight:600; padding:12px; border-radius:10px;
+    cursor:pointer; border:1px solid var(--line);}
+  .sheet .save{background:var(--oak); color:#231a0c; border-color:var(--oak)}
+  .sheet .close{background:var(--card); color:var(--chalk)}
+  .sheet .reset{background:transparent; color:var(--chalk-faint); flex:0 0 auto}
+
+  .toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+    background:var(--card); border:1px solid var(--line); color:var(--chalk); font-size:13px; padding:10px 14px;
+    border-radius:10px; z-index:60; opacity:0; transition:opacity .2s; pointer-events:none; box-shadow:0 8px 24px #0007;}
+  .toast.show{opacity:1}
+  button:focus-visible, .name:focus-visible{outline:2px solid var(--oak); outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1><span class="mark">/</span> Training Sheet</h1>
+      <span class="weekline" id="weekline"></span>
+    </div>
+    <div class="modes" role="tablist">
+      <button id="mode-ref" aria-pressed="true">Reference</button>
+      <button id="mode-log" aria-pressed="false">Log</button>
+    </div>
+  </header>
+
+  <div class="weekstrip" id="weekstrip" style="display:none">
+    <button id="wk-prev" aria-label="Previous week">‹</button>
+    <div style="text-align:center">
+      <div class="lbl" id="wk-label"></div>
+      <div class="sub" id="wk-sub"></div>
+    </div>
+    <div style="display:flex; gap:6px">
+      <button class="today" id="wk-today">this week</button>
+      <button id="wk-next" aria-label="Next week">›</button>
+    </div>
+  </div>
+
+  <div class="days" id="days"></div>
+  <main id="main"></main>
+</div>
+
+<div class="scrim" id="scrim">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="note-title">
+    <h2 id="note-title"></h2>
+    <div class="ctx" id="note-ctx"></div>
+    <textarea id="note-text" placeholder="Cues, tempo, load, how it felt…"></textarea>
+    <div class="row">
+      <button class="reset" id="note-reset">Reset</button>
+      <button class="close" id="note-close">Close</button>
+      <button class="save" id="note-save">Save note</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="restore-input" accept="application/json,.json" style="display:none">
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------- storage: localStorage with in-memory fallback ---------------- */
+const store = (() => {
+  let mem = {}, ok = false;
+  try { localStorage.setItem("__t","1"); localStorage.removeItem("__t"); ok = true; } catch(e){ ok = false; }
+  return {
+    ok,
+    get(k){ try { return ok ? localStorage.getItem(k) : (k in mem ? mem[k] : null); } catch(e){ return k in mem ? mem[k] : null; } },
+    set(k,v){ try { ok ? localStorage.setItem(k,v) : (mem[k]=v); } catch(e){ mem[k]=v; } },
+    del(k){ try { ok ? localStorage.removeItem(k) : delete mem[k]; } catch(e){ delete mem[k]; } },
+    keys(){ try { return ok ? Object.keys(localStorage) : Object.keys(mem); } catch(e){ return Object.keys(mem); } }
+  };
+})();
+const jget = k => { const v = store.get(k); try { return v ? JSON.parse(v) : null; } catch(e){ return null; } };
+const jset = (k,v) => store.set(k, JSON.stringify(v));
+
+/* ---------------- program data (preloaded from your handoff) ---------------- */
+const SESSIONS = [
+  { id:"s1", name:"Day 1", blocks:[
+    { type:"Handstand", items:[
+      {id:"s1_flags",name:"1-arm flags (weight shifts)"},{id:"s1_pikepress",name:"Pike presses"},
+      {id:"s1_pirou",name:"Pirouettes"},{id:"s1_lightcomp",name:"Light compression"}]},
+    { type:"Strength & Conditioning", items:[
+      {id:"s1_pullups",name:"Pull-ups"},{id:"s1_dips",name:"Dips"},{id:"s1_rdl",name:"RDL"},
+      {id:"s1_stepup",name:"Deep step-up"},{id:"s1_kneeext",name:"Knee extensions"},
+      {id:"s1_dragon",name:"Dragon flag"},{id:"s1_copen",name:"Copenhagen plank"}]}]},
+  { id:"s2", name:"Day 2", blocks:[
+    { type:"Handstand", items:[
+      {id:"s2_flags",name:"1-arm flags (weight shifts)"},{id:"s2_stalderneg",name:"Stalder negative"},
+      {id:"s2_shapes",name:"Shapes"},{id:"s2_lightcomp",name:"Light compression"}]},
+    { type:"Strength & Conditioning", items:[
+      {id:"s2_rows",name:"Rows"},{id:"s2_pikehspu",name:"Pike / headstand push-ups"},
+      {id:"s2_hyper",name:"Hyperextension"},{id:"s2_lunge",name:"Back lunge"},
+      {id:"s2_calf",name:"Calf raises"},{id:"s2_plank",name:"Long plank / hollow body"},
+      {id:"s2_ql",name:"Trunk rotations / QL raises"}]}]},
+  { id:"s3", name:"Day 3", blocks:[
+    { type:"Handstand", items:[
+      {id:"s3_flags",name:"1-arm flags (weight shifts)"},{id:"s3_chained",name:"Chained straddle presses"},
+      {id:"s3_openclose",name:"Open-close shoulders (free)"},{id:"s3_maincomp",name:"Main compression"}]},
+    { type:"Strength & Conditioning", items:[
+      {id:"s3_planche",name:"Planche static holds"},
+      {id:"s3_planchedyn",name:"HS→frog→crane→tuck planche / Tuck planche lift-offs"},
+      {id:"s3_ytw",name:"Prone Y-T-W / Face pulls"}]}]},
+];
+
+const DEFAULT_NOTES = {
+  s1_flags:"Weight shifts — load onto one arm without tipping. Keep the base solid; wrist-friendly.",
+  s1_pikepress:"Comfortable from the floor. Aim for clean, chained reps where the feet never touch.",
+  s1_pirou:"Controlled entries/exits. Doubles as wrist prep for one-arm work.",
+  s1_lightcomp:"Shortened compression: contract-relax + a couple of active drills. Active, not long passive.",
+  s1_pullups:"One of three pull exposures — pull is the weak point. 3×8–12, or the density work (2 reps / 40s).",
+  s1_dips:"Ready for load. Weighted or rings. 3×8–12.",
+  s1_rdl:"Currently rehab range (3×15). If the back is cleared, 3×8–12 with load does more — ask the physio.",
+  s1_stepup:"3×8–12 / side. Own the descent. Knee extensions can fold in here if time is tight.",
+  s1_kneeext:"Lowest-priority isolation — first candidate to cut or fold into the step-up.",
+  s1_dragon:"Hold a NEUTRAL spine at the bottom (back history) — don't let the lumbar over-extend. Counts as some pulling.",
+  s1_copen:"Adductors are maintenance-only per the assessment. Rotate week-to-week rather than every session.",
+  s2_flags:"Weight shifts — load onto one arm without tipping. Keep the base solid; wrist-friendly.",
+  s2_stalderneg:"From handstand, lower in straddle as SLOWLY as possible. Stop while still controlled and bail from the last good position — don't ride into a collapsed straddle L. Deliberately slow the bottom third. 3–5 reps. Your only exposure to the gravity-opposing range — the primary limiter.",
+  s2_shapes:"Cycle straight / tuck / straddle etc. Crisp, deliberate shape changes.",
+  s2_lightcomp:"Shortened compression: contract-relax + a couple of active drills. Active, not long passive.",
+  s2_rows:"Second pull exposure. 3×8–12.",
+  s2_pikehspu:"HSPU progression. 3×8–12, or build toward holds.",
+  s2_hyper:"Posterior chain, controlled range.",
+  s2_lunge:"3×8–12 / side (or rehab 3×15 until cleared).",
+  s2_calf:"Low priority for your goals — candidate to superset into rest periods, or cut if time-tight.",
+  s2_plank:"Build toward 40s total. Handstand-adjacent — earns its place.",
+  s2_ql:"Rotate week-to-week rather than every session.",
+  s3_flags:"Weight shifts — load onto one arm without tipping. Keep the base solid; wrist-friendly.",
+  s3_chained:"From a straddle L on parallettes: press up, lower back to the hold, repeat. Feet never touch. Accept an uglier shape than the floor press — chaining is its own skill.",
+  s3_openclose:"Slight planche lean (as at the start of a good-form HSPU) then re-open. Straight arms.",
+  s3_maincomp:"Full session: contract-relax (pike, single-leg pike, pancake) + active drills (heel lifts, folded lifts, straddle-L on high blocks). Seated, straight back, elevated for range work.",
+  s3_planche:"Eccentric-biased, not momentum. Counts toward the straight-arm eccentric cap. Do while fresh.",
+  s3_planchedyn:"HS→frog→crane→tuck planche, or tuck-planche lift-offs from a deep lean. Eccentric, not momentum. Cap ~8–10 quality straight-arm eccentric reps/session across planche + stalder negatives; if medial elbows talk, cut this first.",
+  s3_ytw:"Rear delt / external rotation — third pull exposure. Alternate Prone Y-T-W with Face pulls by week/feel.",
+};
+
+const INDEX = {};
+SESSIONS.forEach(s => s.blocks.forEach(b => b.items.forEach(it => INDEX[it.id] = { name:it.name, block:b.type, baseSession:s.id })));
+const BLOCK_ORDER = ["Handstand","Strength & Conditioning"];
+const sessionName = id => (SESSIONS.find(s=>s.id===id)||{}).name || id;
+function baseOrder(id){ let n=0; for(const s of SESSIONS) for(const b of s.blocks) for(const it of b.items){ if(it.id===id) return n; n++; } return 999; }
+
+/* ---------------- week helpers ---------------- */
+function mondayOf(d){ const x=new Date(d); const off=(x.getDay()+6)%7; x.setDate(x.getDate()-off); x.setHours(0,0,0,0); return x; }
+function weekKey(d){ return mondayOf(d).toISOString().slice(0,10); }
+function addWeeks(key,n){ const d=new Date(key+"T00:00:00"); d.setDate(d.getDate()+7*n); return weekKey(d); }
+function fmtWeek(key){ const d=new Date(key+"T00:00:00"); const e=new Date(d); e.setDate(e.getDate()+6);
+  const o={month:"short",day:"numeric"}; return d.toLocaleDateString(undefined,o)+" – "+e.toLocaleDateString(undefined,o); }
+
+/* ---------------- state ---------------- */
+const state = { mode:"reference", session:"s1", week:weekKey(new Date()), notes:{}, log:{} };
+function loadNotes(){ state.notes = jget("notes") || {}; }
+function loadWeek(){ state.log = jget("log:"+state.week) || {}; }
+function saveWeek(){ jset("log:"+state.week, state.log); }
+
+function effSession(id){ const l=state.log[id]; return (l && l.day) ? l.day : INDEX[id].baseSession; }
+function statusOf(id){ const l=state.log[id]; return l ? l.status : null; }
+function setLog(id, patch){
+  const cur = state.log[id] || {status:null, day:null};
+  state.log[id] = Object.assign(cur, patch);
+  if(!state.log[id].status && !state.log[id].day) delete state.log[id];
+  saveWeek(); render();
+}
+function noteText(id){ return (id in state.notes && state.notes[id]!=null) ? state.notes[id] : (DEFAULT_NOTES[id]||""); }
+
+/* ---------------- rendering ---------------- */
+const $ = s => document.querySelector(s);
+
+function render(){
+  $("#mode-ref").setAttribute("aria-pressed", state.mode==="reference");
+  $("#mode-log").setAttribute("aria-pressed", state.mode==="log");
+  $("#weekline").textContent = state.mode==="log" ? "logging" : "reference";
+  $("#weekstrip").style.display = state.mode==="log" ? "flex" : "none";
+  if(state.mode==="log"){
+    $("#wk-label").textContent = fmtWeek(state.week);
+    const isThis = state.week===weekKey(new Date());
+    $("#wk-sub").textContent = isThis ? "current week" : "";
+    $("#wk-today").style.visibility = isThis ? "hidden" : "visible";
+  }
+
+  const days = $("#days"); days.innerHTML="";
+  SESSIONS.forEach(s=>{
+    const b=document.createElement("button");
+    b.setAttribute("aria-pressed", s.id===state.session);
+    b.innerHTML = `<span class="d">${s.name.toUpperCase()}</span><span class="t">${s.blocks[0].items.length + s.blocks[1].items.length} items</span>`;
+    b.onclick=()=>{ state.session=s.id; render(); };
+    days.appendChild(b);
+  });
+
+  const main=$("#main"); main.innerHTML="";
+  BLOCK_ORDER.forEach(bt=>{
+    const block=document.createElement("section"); block.className="block";
+    const eb=document.createElement("div"); eb.className="eyebrow"; eb.textContent=bt; block.appendChild(eb);
+
+    let items;
+    if(state.mode==="reference"){
+      const s=SESSIONS.find(x=>x.id===state.session);
+      items=s.blocks.find(x=>x.type===bt).items.map(it=>it.id);
+    } else {
+      items=Object.keys(INDEX).filter(id=>INDEX[id].block===bt && effSession(id)===state.session).sort((a,b)=>baseOrder(a)-baseOrder(b));
+    }
+    if(items.length===0){ const e=document.createElement("div"); e.className="empty"; e.textContent="Nothing here this week."; block.appendChild(e); }
+    else { items.forEach(id=> block.appendChild(rowFor(id))); }
+    main.appendChild(block);
+  });
+
+  if(state.mode==="log"){
+    const f=document.createElement("div"); f.className="footer";
+    const mk=(txt,fn)=>{ const b=document.createElement("button"); b.textContent=txt; b.onclick=fn; return b; };
+    f.appendChild(mk("Copy week for spreadsheet", copyWeek));
+    f.appendChild(mk("Clear this week", clearWeek));
+    f.appendChild(mk("Back up all data", backup));
+    f.appendChild(mk("Restore from backup", ()=>$("#restore-input").click()));
+    main.appendChild(f);
+  }
+}
+
+function rowFor(id){
+  const meta=INDEX[id];
+  const el=document.createElement("div"); el.className="ex";
+  const st=statusOf(id);
+  const shiftedIn = state.mode==="log" && effSession(id)!==meta.baseSession;
+  if(state.mode==="log"){
+    if(st==="done") el.classList.add("s-done");
+    else if(st==="drop") el.classList.add("s-drop");
+    else if(shiftedIn) el.classList.add("s-shift");
+  }
+  const top=document.createElement("div"); top.className="top";
+  const name=document.createElement("button"); name.className="name";
+  const hasNote = noteText(id).trim().length>0;
+  name.innerHTML = `${meta.name}${hasNote?` <span class="note-has">note</span>`:``}<span class="chev">›</span>`;
+  name.onclick=()=>openNote(id); top.appendChild(name);
+
+  if(state.mode==="log"){
+    let pillTxt="", pillCls="";
+    if(st==="done"){ pillTxt="done"; pillCls="done"; }
+    else if(st==="drop"){ pillTxt="dropped"; pillCls="drop"; }
+    else if(shiftedIn){ pillTxt="from "+sessionName(meta.baseSession); pillCls="moved-in"; }
+    if(pillTxt){ const p=document.createElement("span"); p.className="pill "+pillCls; p.textContent=pillTxt; top.appendChild(p); }
+  }
+  el.appendChild(top);
+
+  if(state.mode==="reference" && hasNote){ const pk=document.createElement("div"); pk.className="peek"; pk.textContent=noteText(id); el.appendChild(pk); }
+
+  if(state.mode==="log"){
+    const a=document.createElement("div"); a.className="actions";
+    const done=document.createElement("button"); done.className="act-done"; done.textContent="Done";
+    done.setAttribute("aria-pressed", st==="done"); done.onclick=()=> setLog(id,{status: st==="done"?null:"done"}); a.appendChild(done);
+    const drop=document.createElement("button"); drop.className="act-drop"; drop.textContent="Drop";
+    drop.setAttribute("aria-pressed", st==="drop"); drop.onclick=()=> setLog(id,{status: st==="drop"?null:"drop"}); a.appendChild(drop);
+    const move=document.createElement("div"); move.className="move";
+    const to=document.createElement("span"); to.className="to"; to.textContent="move:"; move.appendChild(to);
+    const eff=effSession(id);
+    SESSIONS.forEach(s=>{
+      if(s.id===meta.baseSession && eff===meta.baseSession) return;
+      const mv=document.createElement("button"); mv.className="mv";
+      mv.textContent = s.id===meta.baseSession ? "↩ "+s.name.replace("Day ","D") : s.name.replace("Day ","D");
+      mv.setAttribute("aria-pressed", eff===s.id && s.id!==meta.baseSession);
+      mv.onclick=()=> setLog(id,{day: s.id===meta.baseSession ? null : s.id}); move.appendChild(mv);
+    });
+    a.appendChild(move); el.appendChild(a);
+  }
+  return el;
+}
+
+/* ---------------- notes ---------------- */
+let noteId=null;
+function openNote(id){
+  noteId=id;
+  $("#note-title").textContent = INDEX[id].name;
+  $("#note-ctx").textContent = sessionName(INDEX[id].baseSession).toUpperCase()+"  ·  "+INDEX[id].block;
+  $("#note-text").value = noteText(id);
+  $("#scrim").classList.add("open");
+  setTimeout(()=>$("#note-text").focus(),50);
+}
+function closeNote(){ $("#scrim").classList.remove("open"); noteId=null; }
+$("#note-save").onclick=()=>{ if(noteId){ state.notes[noteId]=$("#note-text").value; jset("notes",state.notes); toast("Note saved"); render(); } closeNote(); };
+$("#note-reset").onclick=()=>{ if(noteId){ delete state.notes[noteId]; jset("notes",state.notes); $("#note-text").value=DEFAULT_NOTES[noteId]||""; toast("Reset to default"); render(); } };
+$("#note-close").onclick=closeNote;
+$("#scrim").onclick=(e)=>{ if(e.target===$("#scrim")) closeNote(); };
+
+/* ---------------- mode + week nav ---------------- */
+$("#mode-ref").onclick=()=>{ state.mode="reference"; render(); };
+$("#mode-log").onclick=()=>{ state.mode="log"; render(); };
+$("#wk-prev").onclick=()=>{ state.week=addWeeks(state.week,-1); loadWeek(); render(); };
+$("#wk-next").onclick=()=>{ state.week=addWeeks(state.week, 1); loadWeek(); render(); };
+$("#wk-today").onclick=()=>{ state.week=weekKey(new Date()); loadWeek(); render(); };
+
+/* ---------------- export / backup / restore ---------------- */
+function weekReport(){
+  const lines=["Training log — "+fmtWeek(state.week)];
+  SESSIONS.forEach(s=>{
+    lines.push("", s.name);
+    Object.keys(INDEX).filter(id=>effSession(id)===s.id).sort((a,b)=>baseOrder(a)-baseOrder(b)).forEach(id=>{
+      const st=statusOf(id); const moved=effSession(id)!==INDEX[id].baseSession;
+      let tag="·";
+      if(st==="done") tag="[done]"; else if(st==="drop") tag="[drop]"; else if(moved) tag="[← "+sessionName(INDEX[id].baseSession)+"]";
+      lines.push("  "+tag+" "+INDEX[id].name);
+    });
+  });
+  return lines.join("\n");
+}
+async function copyWeek(){
+  const txt=weekReport();
+  try{ await navigator.clipboard.writeText(txt); toast("Copied — paste into your sheet"); }
+  catch(e){ $("#note-title").textContent="Copy this week"; $("#note-ctx").textContent="Select all → copy"; $("#note-text").value=txt; noteId=null; $("#scrim").classList.add("open"); $("#note-text").select(); }
+}
+function clearWeek(){
+  if(!confirm("Clear all done / moved / dropped marks for "+fmtWeek(state.week)+"? Notes are kept.")) return;
+  state.log={}; saveWeek(); render(); toast("Week cleared");
+}
+function backup(){
+  const data={ app:"training-sheet", version:1, exported:new Date().toISOString(), notes: jget("notes")||{}, logs:{} };
+  store.keys().filter(k=>k.startsWith("log:")).forEach(k=>{ data.logs[k.slice(4)] = jget(k)||{}; });
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download="training-sheet-backup-"+weekKey(new Date())+".json";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast("Backup downloaded");
+}
+$("#restore-input").onchange=(e)=>{
+  const file=e.target.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const data=JSON.parse(r.result);
+      if(data.notes){ jset("notes",data.notes); }
+      if(data.logs){ Object.keys(data.logs).forEach(wk=> jset("log:"+wk, data.logs[wk])); }
+      loadNotes(); loadWeek(); render(); toast("Backup restored");
+    }catch(err){ toast("Couldn't read that file"); }
+    $("#restore-input").value="";
+  };
+  r.readAsText(file);
+};
+
+/* ---------------- toast ---------------- */
+let toastT;
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),1600); }
+
+/* ---------------- boot ---------------- */
+loadNotes(); loadWeek(); render();
+if("serviceWorker" in navigator){ window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); }); }
+</script>
+</body>
+</html>
