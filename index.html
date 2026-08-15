@@ -331,9 +331,16 @@ async function boot(){
     app=FB.initializeApp(firebaseConfig);
     try{ db=FB.initializeFirestore(app,{ localCache: FB.persistentLocalCache({ tabManager: FB.persistentMultipleTabManager() }) }); }
     catch(e){ db=FB.getFirestore(app); }   // fallback if cache already initialised
-    auth=FB.getAuth(app);
+    try{
+      auth=FB.initializeAuth(app, {
+        persistence:[FB.indexedDBLocalPersistence, FB.browserLocalPersistence],
+        popupRedirectResolver: FB.browserPopupRedirectResolver
+      });
+    }catch(e){ auth=FB.getAuth(app); }
     FB.getRedirectResult(auth).catch(()=>{});
     FB.onAuthStateChanged(auth, onAuth);
+    // safety net: never sit on the Loading screen if auth is slow to report
+    setTimeout(()=>{ if(!state.ready){ state.ready=true; render(); } }, 7000);
   }catch(e){ state.loadError="Firebase init failed: "+(e && e.message||e); render(); }
 }
 
@@ -345,12 +352,21 @@ function onAuth(u){
 }
 async function doSignIn(){
   const provider=new FB.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt:"select_account" });
+  state.loadError=null;
   try{
-    if(isStandalone()) await FB.signInWithRedirect(auth, provider);
-    else await FB.signInWithPopup(auth, provider);
+    await FB.signInWithPopup(auth, provider);   // works in Safari AND modern installed PWAs
   }catch(e){
-    try{ await FB.signInWithRedirect(auth, provider); }
-    catch(e2){ state.loadError="Sign-in failed: "+(e2 && e2.message||e2); render(); }
+    const code=(e && e.code)||"";
+    if(code.indexOf("popup-blocked")>=0 || code.indexOf("operation-not-supported")>=0){
+      // popup genuinely unavailable — fall back to a full-page redirect
+      try{ await FB.signInWithRedirect(auth, provider); return; }
+      catch(e2){ state.loadError="Sign-in failed: "+(e2 && e2.message||e2); render(); }
+    } else if(code.indexOf("popup-closed")>=0 || code.indexOf("cancelled-popup")>=0){
+      /* user dismissed the popup — no error to show */
+    } else {
+      state.loadError="Sign-in failed: "+(e && e.message||e); render();
+    }
   }
 }
 function doSignOut(){ if(auth) FB.signOut(auth).catch(()=>{}); }
