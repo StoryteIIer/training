@@ -91,6 +91,16 @@
   .entrline .sum .tags{font-family:var(--mono); font-size:11px; color:var(--oak); margin-left:6px}
   .entrline .ed{font-family:var(--mono); font-size:11px; color:var(--chalk-faint)}
   .addlog{margin-top:9px; border:1px dashed var(--line); background:transparent; color:var(--oak); font-size:13px; font-weight:600; padding:9px; border-radius:9px; cursor:pointer; width:100%}
+  .ex.skipped{opacity:.6}
+  .ex.skipped::before{background:var(--drop)}
+  .ex.moved::before{background:var(--shift)}
+  .stbadge{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:3px 7px; border-radius:999px; align-self:flex-start; white-space:nowrap; margin-top:1px}
+  .stbadge.skip{background:#2a2d33; color:var(--chalk-faint); border:1px solid var(--line)}
+  .stbadge.move{background:#332a18; color:var(--shift); border:1px solid #5a4522}
+  .markrow{display:flex; gap:8px; margin-top:10px}
+  .markrow .markbtn{flex:1; border:1px solid var(--line); background:var(--bg2); color:var(--chalk-dim); font-size:12.5px; font-weight:600; padding:8px; border-radius:9px; cursor:pointer}
+  .markrow .markbtn.on.skip{border-color:var(--drop); background:#2a2d33; color:var(--chalk)}
+  .markrow .markbtn.on.move{border-color:#5a4522; background:#332a18; color:var(--shift)}
 
   .footer{margin:26px 2px 0; display:flex; gap:8px; flex-wrap:wrap}
   .footer button{font-size:12.5px; font-weight:600; color:var(--chalk-dim); background:var(--bg2); border:1px solid var(--line); border-radius:9px; padding:9px 12px; cursor:pointer}
@@ -307,7 +317,7 @@ function seedProgram(){
 const state = {
   ready:false, loadError:null, user:null, uid:null,
   tab:"log",
-  programs:{}, allEntries:[],
+  programs:{}, allEntries:[], marks:{},
   _programsLoaded:false, _entriesLoaded:false, _migrated:false,
   logProgram:null, logSession:null, sessionDate:todayStr(),
   builder:null,
@@ -352,7 +362,6 @@ function onAuth(u){
 }
 async function doSignIn(){
   const provider=new FB.GoogleAuthProvider();
-  provider.setCustomParameters({ prompt:"select_account" });
   state.loadError=null;
   try{
     await FB.signInWithPopup(auth, provider);   // works in Safari AND modern installed PWAs
@@ -387,6 +396,10 @@ function startSubs(){
     const arr=[]; snap.forEach(d=> arr.push(d.data()));
     arr.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
     state.allEntries=arr; state._entriesLoaded=true; render();
+  }, err=>{}));
+  unsub.push(FB.onSnapshot(col("itemMarks"), snap=>{
+    const m={}; snap.forEach(d=> m[d.id]=d.data());
+    state.marks=m; render();
   }, err=>{}));
 }
 function stopSubs(){ unsub.forEach(fn=>{ try{fn();}catch(e){} }); unsub=[]; }
@@ -430,6 +443,21 @@ function cycleLabel(program){
 function loggedInCurrentCycle(program, dayId){
   const w=cycleWindow(program, todayStr());
   return state.allEntries.some(e=> e.programId===program.id && e.dayId===dayId && e.date>=w.start && e.date<=w.end);
+}
+
+/* ---- per-item skip/move marks (per current cycle) ---- */
+function markId(program, dayId, itemId){
+  const cs=cycleWindow(program, todayStr()).start;
+  return program.id+"__"+dayId+"__"+itemId+"__"+cs;
+}
+function getMark(program, dayId, itemId){ const m=state.marks[markId(program,dayId,itemId)]; return m?m.status:"none"; }
+async function toggleMark(program, dayId, itemId, status){
+  const id=markId(program, dayId, itemId);
+  const cur=state.marks[id]?state.marks[id].status:"none";
+  try{
+    if(cur===status){ await FB.deleteDoc(dref("itemMarks", id)); }
+    else { await FB.setDoc(dref("itemMarks", id), { programId:program.id, dayId, itemId, status, cycleStart:cycleWindow(program,todayStr()).start, updatedAt:Date.now() }); }
+  }catch(e){ toast("Couldn't update"); }
 }
 
 /* ================= sets shorthand parser =================
@@ -608,15 +636,23 @@ function renderLog(main){
 }
 
 function exerciseCard(p, day, item, entries){
-  const card=h("div",{class:"ex"+(entries.length?" logged":"")});
+  const status = entries.length ? "done" : getMark(p, day.id, item.id);
+  const cls = status==="done"?"logged": status==="skip"?"skipped": status==="move"?"moved":"";
+  const card=h("div",{class:("ex "+cls).trim()});
   const note=item.note && item.note.trim();
+  const badge = status==="skip"?h("span",{class:"stbadge skip"},"skipped"): status==="move"?h("span",{class:"stbadge move"},"moved"):null;
   const nameBtn=h("button",{class:"name", onClick:()=> toggleNote(card, item)}, item.name, note?h("span",{class:"note-has"}," note"):null, h("span",{class:"chev"},"›"));
-  card.appendChild(h("div",{class:"top"}, nameBtn));
+  card.appendChild(h("div",{class:"top"}, nameBtn, badge));
   entries.forEach(e=>{
     card.appendChild(h("div",{class:"entrline", onClick:()=> openEntryForm(p, day, item, e)},
       h("div",{class:"sum"}, summarize(e), (e.tags&&e.tags.length)?h("span",{class:"tags"}, e.tags.join(" · ")):null),
       h("div",{class:"ed"}, "edit")));
   });
+  if(!entries.length){
+    card.appendChild(h("div",{class:"markrow"},
+      h("button",{class:"markbtn"+(status==="skip"?" on skip":""), onClick:()=> toggleMark(p, day.id, item.id, "skip")}, status==="skip"?"Skipped ✓":"Skip"),
+      h("button",{class:"markbtn"+(status==="move"?" on move":""), onClick:()=> toggleMark(p, day.id, item.id, "move")}, status==="move"?"Moved ✓":"Move")));
+  }
   card.appendChild(h("button",{class:"addlog", onClick:()=> openEntryForm(p, day, item, null)}, entries.length?"+ Another set-entry":"+ Log"));
   return card;
 }
@@ -893,6 +929,53 @@ function renderPrograms(main){
         h("button",{onClick:()=>openBuilder(p.id)},"Edit"),
         h("button",{class:"del", onClick:()=>delProgram(p.id)},"Delete"))));
   });
+
+  const n=state.allEntries.length;
+  main.appendChild(h("section",{class:"block"},
+    h("div",{class:"eyebrow"},"Data"),
+    h("div",{class:"hint", style:"margin:0 2px 8px"}, n+" logged entr"+(n===1?"y":"ies")+" · "+list.length+" program"+(list.length===1?"":"s")+" in the cloud"),
+    h("div",{class:"footer", style:"margin-top:0"},
+      h("button",{onClick:()=>exportData("json")}, "Export backup (JSON)"),
+      h("button",{onClick:()=>exportData("csv")}, "Export log (CSV)"))));
+}
+
+/* ---- export ---- */
+function csvEscape(v){ v=(v==null?"":String(v)); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+function buildJSON(){
+  return JSON.stringify({ app:"training-sheet", exportedAt:new Date().toISOString(),
+    programs:programList(), logEntries:state.allEntries.slice() }, null, 2);
+}
+function buildCSV(){
+  const pn={}, dn={};
+  programList().forEach(p=>{ pn[p.id]=p.name; p.sessions.forEach(s=> dn[p.id+"/"+s.id]=s.name); });
+  const rows=[["date","exercise","tags","mode","sets","weight","unit","rest","program","day","notes"]];
+  state.allEntries.slice().sort((a,b)=> a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0)).forEach(e=>{
+    rows.push([ e.date, e.name, (e.tags||[]).join("|"), e.mode, e.setsText||summarize(e),
+      (e.unit==="bw"?"":e.weight), e.unit, (e.rest===""||e.rest==null?"":e.rest),
+      pn[e.programId]||"", dn[e.programId+"/"+e.dayId]||"", e.notes||"" ]);
+  });
+  return rows.map(r=> r.map(csvEscape).join(",")).join("\n");
+}
+async function exportData(kind){
+  const stamp=todayStr();
+  const filename = kind==="csv" ? ("training-log-"+stamp+".csv") : ("training-sheet-backup-"+stamp+".json");
+  const text = kind==="csv" ? buildCSV() : buildJSON();
+  const mime = kind==="csv" ? "text/csv" : "application/json";
+  // Prefer the share sheet on iOS (lets you Save to Files / Mail / Notes)
+  if(navigator.canShare){
+    try{
+      const file=new File([text], filename, {type:mime});
+      if(navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:filename}); return; }
+    }catch(e){ if(e && e.name==="AbortError") return; /* else fall through to download */ }
+  }
+  try{
+    const blob=new Blob([text],{type:mime});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 3000);
+    toast("Exported "+filename);
+  }catch(e){ toast("Export failed"); }
 }
 async function delProgram(id){
   const p=getProgram(id); if(!p) return;
