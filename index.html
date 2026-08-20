@@ -125,6 +125,17 @@
   .keypad .key.back{color:var(--chalk-dim); font-size:16px}
   .keypad .key.wide{grid-column:span 2; font-size:13px; color:var(--chalk-dim); letter-spacing:.08em}
   .keypad .key:active{background:var(--bg2); border-color:var(--oak-deep)}
+  /* alternatives */
+  .altrow{display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:10px}
+  .altrow .altpick{border:1px solid var(--oak-deep); background:#2f2818; color:var(--oak); font-size:13px; font-weight:600; padding:8px 12px; border-radius:9px; cursor:pointer}
+  .ex .name.static .altmark{color:var(--oak); font-family:var(--mono); font-size:13px}
+  .entrline .sum .enm{font-weight:600; color:var(--chalk)}
+  .formnote{font-size:12.5px; color:var(--chalk-dim); line-height:1.45; margin-top:8px; padding:9px 11px; background:var(--card); border:1px solid var(--line); border-radius:9px}
+  .b-alt{border:1px solid var(--oak-deep); border-radius:10px; padding:10px; background:#211c12}
+  .b-alt .b-alt-h{display:flex; gap:10px; align-items:center}
+  .b-alt .altlbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--oak)}
+  .b-alt .opt{margin-top:8px; border-top:1px dashed var(--line); padding-top:8px}
+  .b-linkbtn{background:none; border:0; color:var(--oak-deep); font-family:var(--mono); font-size:11px; cursor:pointer; padding:6px 2px; text-decoration:underline; text-align:left}
 
   .footer{margin:26px 2px 0; display:flex; gap:8px; flex-wrap:wrap}
   .footer button{font-size:12.5px; font-weight:600; color:var(--chalk-dim); background:var(--bg2); border:1px solid var(--line); border-radius:9px; padding:9px 12px; cursor:pointer}
@@ -727,15 +738,36 @@ function renderLog(main){
   main.appendChild(exblock);
 }
 
+/* ---- alternatives-slot helpers ---- */
+function slotName(item){
+  if(item.alt){ const lbl=(item.name||"").trim(); if(lbl) return lbl; return (item.options||[]).map(o=>o.name).filter(Boolean).join(" / ")||"Choose"; }
+  return item.name;
+}
+function entryContext(item, e){
+  if(item.alt){ const o=(item.options||[]).find(o=>o.name===e.name); return {id:item.id, name:e.name, note:o?o.note:""}; }
+  return item;
+}
+function cardName(card, item){
+  if(item.alt) return h("div",{class:"name static"}, slotName(item), h("span",{class:"altmark"}," ⋔"));
+  const note=item.note && item.note.trim();
+  return h("button",{class:"name", onClick:()=> toggleNote(card, item)}, item.name, note?h("span",{class:"note-has"}," note"):null, h("span",{class:"chev"},"›"));
+}
+function logAffordance(p, day, item, done){
+  if(item.alt){
+    const row=h("div",{class:"altrow"}, h("span",{class:"movelbl"}, done?"Log another":"Choose"));
+    (item.options||[]).forEach(o=> row.appendChild(h("button",{class:"altpick", onClick:()=> openEntryForm(p, day, {id:item.id, name:o.name, note:o.note}, null)}, o.name)));
+    return row;
+  }
+  return h("button",{class:"addlog", onClick:()=> openEntryForm(p, day, item, null)}, done?"+ Another set-entry":"+ Log");
+}
+
 function exerciseCard(p, day, item, w){
   const entries=entriesForItemCycle(p, day.id, item.id, w);
   const done=entries.length>0;
   const skipped = !done && getMark(p, day.id, item.id)==="skip";
   const card=h("div",{class:("ex "+(done?"logged":skipped?"skipped":"")).trim()});
-  const note=item.note && item.note.trim();
   const badge = skipped?h("span",{class:"stbadge skip"},"skipped"):null;
-  const nameBtn=h("button",{class:"name", onClick:()=> toggleNote(card, item)}, item.name, note?h("span",{class:"note-has"}," note"):null, h("span",{class:"chev"},"›"));
-  card.appendChild(h("div",{class:"top"}, nameBtn, badge));
+  card.appendChild(h("div",{class:"top"}, cardName(card, item), badge));
   entries.forEach(e=> card.appendChild(entryLine(p, day, item, e)));
   if(!done){
     const picking = state.movePicker===(day.id+"__"+item.id);
@@ -751,19 +783,20 @@ function exerciseCard(p, day, item, w){
         h("button",{class:"markbtn", onClick:()=>{ state.movePicker=day.id+"__"+item.id; render(); }}, "Move")));
     }
   }
-  card.appendChild(h("button",{class:"addlog", onClick:()=> openEntryForm(p, day, item, null)}, done?"+ Another set-entry":"+ Log"));
+  card.appendChild(logAffordance(p, day, item, done));
   return card;
 }
 function entryLine(p, day, item, e){
   const datePrefix = e.date!==state.sessionDate ? (fmtShort(e.date)+" · ") : "";
-  return h("div",{class:"entrline", onClick:()=> openEntryForm(p, day, item, e)},
-    h("div",{class:"sum"}, datePrefix+summarize(e), (e.tags&&e.tags.length)?h("span",{class:"tags"}, e.tags.join(" · ")):null),
+  const nm = item.alt ? h("span",{class:"enm"}, e.name+"  ") : null;
+  return h("div",{class:"entrline", onClick:()=> openEntryForm(p, day, entryContext(item,e), e)},
+    h("div",{class:"sum"}, nm, datePrefix+summarize(e), (e.tags&&e.tags.length)?h("span",{class:"tags"}, e.tags.join(" · ")):null),
     h("div",{class:"ed"}, "edit"));
 }
 function movedOutCard(p, day, item, mv){
   const card=h("div",{class:"ex moved dim"});
   card.appendChild(h("div",{class:"top"},
-    h("div",{class:"name static"}, item.name),
+    h("div",{class:"name static"}, slotName(item)),
     h("span",{class:"stbadge move"}, "moved → "+sessName(p, mv.targetDayId))));
   card.appendChild(h("button",{class:"addlog undo", onClick:()=> clearMark(p, day.id, item.id)}, "Undo move"));
   return card;
@@ -772,13 +805,10 @@ function movedInCard(p, day, item, m, w){
   const entries=entriesForItemCycle(p, day.id, item.id, w);
   const done=entries.length>0;
   const card=h("div",{class:"ex "+(done?"logged":"movedin")});
-  const note=item.note && item.note.trim();
-  card.appendChild(h("div",{class:"top"},
-    h("button",{class:"name", onClick:()=> toggleNote(card, item)}, item.name, note?h("span",{class:"note-has"}," note"):null, h("span",{class:"chev"},"›")),
-    h("span",{class:"stbadge move"}, "from "+sessName(p, m.dayId))));
+  card.appendChild(h("div",{class:"top"}, cardName(card, item), h("span",{class:"stbadge move"}, "from "+sessName(p, m.dayId))));
   entries.forEach(e=> card.appendChild(entryLine(p, day, item, e)));
   card.appendChild(h("div",{class:"markrow"}, h("button",{class:"markbtn", onClick:()=> clearMark(p, m.dayId, item.id)}, "Return to "+sessName(p, m.dayId))));
-  card.appendChild(h("button",{class:"addlog", onClick:()=> openEntryForm(p, day, item, null)}, done?"+ Another set-entry":"+ Log"));
+  card.appendChild(logAffordance(p, day, item, done));
   return card;
 }
 function extraCard(p, day, e){
@@ -817,6 +847,7 @@ function openEntryForm(program, day, item, existing){
   // name
   sheet.appendChild(h("label",{class:"fl"},"Exercise"));
   sheet.appendChild(h("input",{class:"tin", value:m.name, placeholder:"Exercise name", ...NOAC, oninput:e=>{ m.name=e.target.value; }}));
+  if(item && item.note && item.note.trim()) sheet.appendChild(h("div",{class:"formnote"}, item.note));
 
   // tags
   sheet.appendChild(h("label",{class:"fl"},"Variation tags"));
@@ -1115,6 +1146,35 @@ function blankProgram(){ return { id:uid("prog"), name:"", active:false, created
 function openBuilder(id){ state.builder = id ? {mode:"edit", data:JSON.parse(JSON.stringify(getProgram(id)))} : {mode:"new", data:blankProgram()}; render(); window.scrollTo(0,0); }
 function rerenderBuilder(){ const m=$("#main"); m.innerHTML=""; m.appendChild(renderBuilder()); }
 
+function builderItem(b, it, ii){
+  if(it.alt){
+    const alt=h("div",{class:"b-alt"});
+    alt.appendChild(h("div",{class:"b-alt-h"},
+      h("span",{class:"altlbl"},"Alternatives ⋔"),
+      h("button",{class:"b-linkbtn", onClick:()=>{ const first=(it.options&&it.options[0])||{name:"",note:""}; it.alt=false; it.name=first.name||""; it.note=first.note||""; delete it.options; rerenderBuilder(); }},"make single"),
+      h("button",{class:"iconbtn danger","aria-label":"Remove", style:"margin-left:auto", onClick:()=>{ b.items.splice(ii,1); rerenderBuilder(); }},"×")));
+    alt.appendChild(h("input",{class:"b-input", style:"margin-top:8px", value:it.name||"", placeholder:"Slot label (optional, e.g. Shoulder prehab)", ...NOAC, oninput:e=>{ it.name=e.target.value; }}));
+    (it.options||[]).forEach((o,oi)=>{
+      alt.appendChild(h("div",{class:"opt"},
+        h("div",{class:"ir"},
+          h("input",{class:"b-input", value:o.name, placeholder:"Alternative "+(oi+1), ...NOAC, oninput:e=>{ o.name=e.target.value; }}),
+          (it.options.length>1)?h("button",{class:"iconbtn danger","aria-label":"Remove alternative", onClick:()=>{ it.options.splice(oi,1); rerenderBuilder(); }},"×"):null),
+        h("details",{class:"b-note"},
+          h("summary",{}, o.note&&o.note.trim()?"note •":"note"),
+          h("textarea",{placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ o.note=e.target.value; }}, o.note||""))));
+    });
+    alt.appendChild(h("button",{class:"addbtn", style:"margin-top:8px", onClick:()=>{ it.options.push({id:uid("o"),name:"",note:""}); rerenderBuilder(); }},"+ Add alternative"));
+    return h("div",{class:"b-item"}, alt);
+  }
+  return h("div",{class:"b-item"},
+    h("div",{class:"ir"},
+      h("input",{class:"b-input", value:it.name, placeholder:"Exercise", ...NOAC, oninput:e=>{ it.name=e.target.value; }}),
+      h("button",{class:"iconbtn danger","aria-label":"Remove exercise", onClick:()=>{ b.items.splice(ii,1); rerenderBuilder(); }},"×")),
+    h("details",{class:"b-note"},
+      h("summary",{}, it.note && it.note.trim()?"note •":"note"),
+      h("textarea",{placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ it.note=e.target.value; }}, it.note||"")),
+    h("button",{class:"b-linkbtn", onClick:()=>{ it.alt=true; it.options=[{id:uid("o"),name:it.name||"",note:it.note||""},{id:uid("o"),name:"",note:""}]; it.name=""; it.note=""; rerenderBuilder(); }},"+ make alternatives"));
+}
 function renderBuilder(){
   const d=state.builder.data;
   if(d.cycleDays==null) d.cycleDays=7; if(!d.startDate) d.startDate=todayStr();
@@ -1149,15 +1209,7 @@ function renderBuilder(){
       block.appendChild(h("div",{class:"bh"},
         h("input",{class:"b-input", value:b.heading, placeholder:"Heading (e.g. Handstand)", ...NOAC, oninput:e=>{ b.heading=e.target.value; }}),
         h("button",{class:"iconbtn danger","aria-label":"Remove heading", onClick:()=>{ s.blocks.splice(bi,1); rerenderBuilder(); }},"×")));
-      b.items.forEach((it,ii)=>{
-        block.appendChild(h("div",{class:"b-item"},
-          h("div",{class:"ir"},
-            h("input",{class:"b-input", value:it.name, placeholder:"Exercise", ...NOAC, oninput:e=>{ it.name=e.target.value; }}),
-            h("button",{class:"iconbtn danger","aria-label":"Remove exercise", onClick:()=>{ b.items.splice(ii,1); rerenderBuilder(); }},"×")),
-          h("details",{class:"b-note"},
-            h("summary",{}, it.note && it.note.trim()?"note •":"note"),
-            h("textarea",{placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ it.note=e.target.value; }}, it.note||""))));
-      });
+      b.items.forEach((it,ii)=>{ block.appendChild(builderItem(b, it, ii)); });
       block.appendChild(h("button",{class:"addbtn", onClick:()=>{ b.items.push({id:uid("i"),name:"",note:""}); rerenderBuilder(); }},"+ Add exercise"));
       sess.appendChild(block);
     });
@@ -1174,7 +1226,18 @@ function renderBuilder(){
 async function saveBuilder(){
   const d=state.builder.data;
   if(!d.name.trim()) d.name="Untitled program";
-  d.sessions.forEach(s=> s.blocks.forEach(b=> b.items=b.items.filter(it=>it.name.trim())));
+  d.sessions.forEach(s=> s.blocks.forEach(b=>{
+    b.items = b.items.map(it=>{
+      if(it.alt){
+        const opts=(it.options||[]).filter(o=>o.name && o.name.trim()).map(o=>({id:o.id||uid("o"), name:o.name.trim(), note:(o.note||"").trim()}));
+        if(opts.length===0) return null;
+        if(opts.length===1) return {id:it.id, name:opts[0].name, note:opts[0].note};
+        return {id:it.id, alt:true, name:(it.name||"").trim(), options:opts};
+      }
+      if(!it.name || !it.name.trim()) return null;
+      return {id:it.id, name:it.name.trim(), note:(it.note||"").trim()};
+    }).filter(Boolean);
+  }));
   try{ await saveProgram(d); state.builder=null; render(); toast("Program saved"); }
   catch(e){ toast("Save failed: "+(e && e.message||e)); }
 }
