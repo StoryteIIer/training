@@ -30,10 +30,10 @@
   button,input,textarea,select,a,summary,label,.ex,.chip{touch-action:manipulation}
   input,textarea,button,select{font-family:inherit}
   input,textarea,select{max-width:100%}
-  .wrap{max-width:640px; margin:0 auto; min-height:100vh; width:100%; overflow-x:clip; position:relative}
-  main{overflow-x:clip}
-  .builder{overflow-x:clip}
-  .sheet{overflow-x:hidden}
+  .wrap{max-width:640px; margin:0 auto; min-height:100vh; width:100%; position:relative}
+  main{overflow-x:hidden}
+  .builder{overflow-x:hidden}
+  .sheet{overflow-x:hidden; overscroll-behavior:contain}
   .frow{min-width:0}
   .frow > div{min-width:0}
 
@@ -136,6 +136,8 @@
   .altrow .altpick{border:1px solid var(--oak-deep); background:#2f2818; color:var(--oak); font-size:13px; font-weight:600; padding:8px 12px; border-radius:9px; cursor:pointer}
   .altrow .altpick.simple{border-color:var(--done); color:var(--done); background:#1e2a1e}
   .ex .name.static .altmark{color:var(--oak); font-family:var(--mono); font-size:13px}
+  .ex .name.static{overflow-wrap:anywhere; min-width:0}
+  .acct{max-width:55%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .entrline .sum .enm{font-weight:600; color:var(--chalk)}
   .formnote{font-size:12.5px; color:var(--chalk-dim); line-height:1.45; margin-top:8px; padding:9px 11px; background:var(--card); border:1px solid var(--line); border-radius:9px}
   .b-alt{border:1px solid var(--oak-deep); border-radius:10px; padding:10px; background:#211c12}
@@ -160,8 +162,9 @@
   .btn-primary{background:var(--oak); color:#231a0c; border:1px solid var(--oak); font-weight:600; font-size:13px; padding:9px 14px; border-radius:10px; cursor:pointer}
   .prog-card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px}
   .prog-card .pc-top{display:flex; align-items:flex-start; justify-content:space-between; gap:12px}
-  .prog-card .pc-name{font-size:16px; font-weight:600}
-  .prog-card .pc-meta{font-family:var(--mono); font-size:11.5px; color:var(--chalk-faint); margin-top:3px}
+  .prog-card .pc-top > div{min-width:0}
+  .prog-card .pc-name{font-size:16px; font-weight:600; overflow-wrap:anywhere}
+  .prog-card .pc-meta{font-family:var(--mono); font-size:11.5px; color:var(--chalk-faint); margin-top:3px; overflow-wrap:anywhere}
   .toggle{border:1px solid var(--line); background:var(--bg2); color:var(--chalk-faint); font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:7px 12px; border-radius:999px; cursor:pointer; white-space:nowrap}
   .toggle[aria-pressed="true"]{border-color:var(--oak-deep); background:#2f2818; color:var(--oak)}
   .prog-card .pc-actions{display:flex; gap:8px; margin-top:12px}
@@ -1360,8 +1363,19 @@ async function saveBuilder(){
 }
 
 /* ================= sheet + toast ================= */
-function openSheet(){ $("#scrim").classList.add("open"); }
-function closeSheet(){ $("#scrim").classList.remove("open"); $("#sheet-content").innerHTML=""; }
+let _lockY=0;
+function openSheet(){
+  _lockY=window.scrollY||window.pageYOffset||0;
+  const b=document.body;
+  b.style.position="fixed"; b.style.top=(-_lockY)+"px"; b.style.left="0"; b.style.right="0"; b.style.width="100%";
+  $("#scrim").classList.add("open");
+}
+function closeSheet(){
+  $("#scrim").classList.remove("open"); $("#sheet-content").innerHTML="";
+  const b=document.body;
+  b.style.position=""; b.style.top=""; b.style.left=""; b.style.right=""; b.style.width="";
+  window.scrollTo(0,_lockY);
+}
 $("#scrim").onclick=e=>{ if(e.target===$("#scrim")) closeSheet(); };
 let toastT;
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),1800); }
