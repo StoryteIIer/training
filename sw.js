@@ -1,5 +1,5 @@
 // Bump CACHE when you change any file, so the app refreshes instead of serving stale cache.
-const CACHE = "training-sheet-v8";
+const CACHE = "training-sheet-v9";
 const ASSETS = [
   "./",
   "./index.html",

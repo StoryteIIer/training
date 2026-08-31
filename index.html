@@ -23,13 +23,13 @@
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
   }
   *{box-sizing:border-box}
-  html{background:var(--bg)}
+  html{background:var(--bg); overflow-x:hidden}
   html,body{margin:0; overscroll-behavior:none}
   body{background:var(--bg); color:var(--chalk); font-family:var(--sans); -webkit-font-smoothing:antialiased;
-    line-height:1.4; padding-bottom:env(safe-area-inset-bottom); touch-action:manipulation;}
+    line-height:1.4; padding-bottom:env(safe-area-inset-bottom); touch-action:manipulation; overflow-x:hidden}
   button,input,textarea,select,a,summary,label,.ex,.chip{touch-action:manipulation}
   input,textarea,button,select{font-family:inherit}
-  .wrap{max-width:640px; margin:0 auto; min-height:100vh}
+  .wrap{max-width:640px; margin:0 auto; min-height:100vh; width:100%; overflow-x:clip}
 
   header{position:sticky; top:0; z-index:20; background:linear-gradient(180deg,var(--bg) 82%,transparent);
     padding:calc(14px + env(safe-area-inset-top)) 16px 10px;}
@@ -136,6 +136,13 @@
   .b-alt .altlbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--oak)}
   .b-alt .opt{margin-top:8px; border-top:1px dashed var(--line); padding-top:8px}
   .b-linkbtn{background:none; border:0; color:var(--oak-deep); font-family:var(--mono); font-size:11px; cursor:pointer; padding:6px 2px; text-decoration:underline; text-align:left}
+  .entrline .sum{min-width:0; overflow-wrap:anywhere}
+  .simplerow{display:flex; align-items:center; gap:12px; margin-top:10px}
+  .simplerow .stepbtn{width:40px; height:38px; border:1px solid var(--line); background:var(--bg2); color:var(--chalk); font-size:20px; font-weight:600; border-radius:9px; cursor:pointer; line-height:1}
+  .simplerow .stepval{font-family:var(--mono); font-size:13.5px; font-weight:700; color:var(--done); flex:1; text-align:center}
+  .flagrow{display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap}
+  .flagtog{border:1px solid var(--line); background:var(--bg2); color:var(--chalk-faint); font-family:var(--mono); font-size:11px; letter-spacing:.04em; padding:6px 11px; border-radius:999px; cursor:pointer}
+  .flagtog.on{border-color:var(--oak-deep); background:#2f2818; color:var(--oak)}
 
   .footer{margin:26px 2px 0; display:flex; gap:8px; flex-wrap:wrap}
   .footer button{font-size:12.5px; font-weight:600; color:var(--chalk-dim); background:var(--bg2); border:1px solid var(--line); border-radius:9px; padding:9px 12px; cursor:pointer}
@@ -580,6 +587,7 @@ function previewText(text, mode){
 function setWeight(s, entry){ return s.w!=null ? s.w : (entry.weight||0); }
 
 function summarize(e){
+  if(e.mode==="check") return (e.count>1)?("done ×"+e.count):"done";
   const sets=e.sets||[];
   if(!sets.length) return "(no sets)";
   const vals=sets.map(s=>s.v);
@@ -619,6 +627,20 @@ function lastEntryForName(name, excludeId){
 }
 function saveEntry(e){ return FB.setDoc(dref("logEntries", e.id), e); }
 function deleteEntry(id){ return FB.deleteDoc(dref("logEntries", id)); }
+function simpleEntryFor(p, dayId, itemId, date){ return state.allEntries.find(e=> e.programId===p.id && e.dayId===dayId && e.itemId===itemId && e.date===date && e.mode==="check"); }
+async function bumpSimple(p, day, item, delta){
+  const date=state.sessionDate;
+  const cur=simpleEntryFor(p, day.id, item.id, date);
+  try{
+    if(!cur){ if(delta<0) return;
+      await saveEntry({ id:uid("e"), programId:p.id, dayId:day.id, itemId:item.id, date, name:item.name, mode:"check", count:1, createdAt:Date.now() });
+    } else {
+      const n=(cur.count||1)+delta;
+      if(n<=0) await deleteEntry(cur.id);
+      else await saveEntry({ ...cur, count:n });
+    }
+  }catch(err){ toast("Save failed"); }
+}
 function allKnownTags(){ const s=new Set(); state.allEntries.forEach(e=> (e.tags||[]).forEach(t=>s.add(t))); return [...s].sort(); }
 function distinctNames(){ const s=new Set(); state.allEntries.forEach(e=> e.name && s.add(e.name)); return [...s].sort((a,b)=>a.localeCompare(b)); }
 
@@ -666,7 +688,15 @@ function programPicker(list, selId, onPick, label){
   return row;
 }
 function seg(options, val, onPick){
-  return h("div",{class:"seg"}, options.map(o=> h("button",{"aria-pressed":String(o.v===val), onClick:()=>onPick(o.v)}, o.label)));
+  const el=h("div",{class:"seg"});
+  options.forEach(o=>{
+    const b=h("button",{"aria-pressed":String(o.v===val), onClick:()=>{
+      Array.prototype.forEach.call(el.children, c=> c.setAttribute("aria-pressed", String(c===b)));
+      onPick(o.v);
+    }}, o.label);
+    el.appendChild(b);
+  });
+  return el;
 }
 function ensureLogSel(){
   const act=activePrograms();
@@ -744,7 +774,7 @@ function slotName(item){
   return item.name;
 }
 function entryContext(item, e){
-  if(item.alt){ const o=(item.options||[]).find(o=>o.name===e.name); return {id:item.id, name:e.name, note:o?o.note:""}; }
+  if(item.alt){ const o=(item.options||[]).find(o=>o.name===e.name); return {id:item.id, name:e.name, note:o?o.note:"", bw:o?o.bw:false}; }
   return item;
 }
 function cardName(card, item){
@@ -753,9 +783,17 @@ function cardName(card, item){
   return h("button",{class:"name", onClick:()=> toggleNote(card, item)}, item.name, note?h("span",{class:"note-has"}," note"):null, h("span",{class:"chev"},"›"));
 }
 function logAffordance(p, day, item, done){
+  if(item.simple){
+    const cur=simpleEntryFor(p, day.id, item.id, state.sessionDate);
+    if(cur) return h("div",{class:"simplerow"},
+      h("button",{class:"stepbtn", onClick:()=> bumpSimple(p,day,item,-1)},"−"),
+      h("span",{class:"stepval"}, cur.count>1?("Done ×"+cur.count):"Done"),
+      h("button",{class:"stepbtn", onClick:()=> bumpSimple(p,day,item,1)},"+"));
+    return h("button",{class:"addlog", onClick:()=> bumpSimple(p,day,item,1)}, "Mark done");
+  }
   if(item.alt){
     const row=h("div",{class:"altrow"}, h("span",{class:"movelbl"}, done?"Log another":"Choose"));
-    (item.options||[]).forEach(o=> row.appendChild(h("button",{class:"altpick", onClick:()=> openEntryForm(p, day, {id:item.id, name:o.name, note:o.note}, null)}, o.name)));
+    (item.options||[]).forEach(o=> row.appendChild(h("button",{class:"altpick", onClick:()=> openEntryForm(p, day, {id:item.id, name:o.name, note:o.note, bw:o.bw}, null)}, o.name)));
     return row;
   }
   return h("button",{class:"addlog", onClick:()=> openEntryForm(p, day, item, null)}, done?"+ Another set-entry":"+ Log");
@@ -768,7 +806,8 @@ function exerciseCard(p, day, item, w){
   const card=h("div",{class:("ex "+(done?"logged":skipped?"skipped":"")).trim()});
   const badge = skipped?h("span",{class:"stbadge skip"},"skipped"):null;
   card.appendChild(h("div",{class:"top"}, cardName(card, item), badge));
-  entries.forEach(e=> card.appendChild(entryLine(p, day, item, e)));
+  const shown = item.simple ? entries.filter(e=> e.date!==state.sessionDate) : entries;
+  shown.forEach(e=> card.appendChild(entryLine(p, day, item, e)));
   if(!done){
     const picking = state.movePicker===(day.id+"__"+item.id);
     if(picking){
@@ -788,6 +827,10 @@ function exerciseCard(p, day, item, w){
 }
 function entryLine(p, day, item, e){
   const datePrefix = e.date!==state.sessionDate ? (fmtShort(e.date)+" · ") : "";
+  if(e.mode==="check"){
+    return h("div",{class:"entrline", onClick:()=>{ if(confirm("Remove this done mark?")) deleteEntry(e.id).catch(()=>{}); }},
+      h("div",{class:"sum"}, datePrefix+summarize(e)), h("div",{class:"ed"}, "remove"));
+  }
   const nm = item.alt ? h("span",{class:"enm"}, e.name+"  ") : null;
   return h("div",{class:"entrline", onClick:()=> openEntryForm(p, day, entryContext(item,e), e)},
     h("div",{class:"sum"}, nm, datePrefix+summarize(e), (e.tags&&e.tags.length)?h("span",{class:"tags"}, e.tags.join(" · ")):null),
@@ -836,9 +879,11 @@ function openEntryForm(program, day, item, existing){
     mode: last?last.mode:"reps",
     setsText:"", sets:[],
     weight: last?(last.weight||0):0, unit: last?(last.unit||"kg"):"kg",
-    rest: last?(last.rest||""):"", notes:""
+    rest: last&&last.rest!=null?last.rest:"", notes:""
   };
   if(!m.tags) m.tags=[];
+  const bwOnly = !!(item && item.bw);
+  if(bwOnly) m.unit="bw";
 
   const sheet=$("#sheet-content"); sheet.innerHTML="";
   sheet.appendChild(h("h2",{}, existing?"Edit entry":"Log entry"));
@@ -883,16 +928,22 @@ function openEntryForm(program, day, item, existing){
   function drawPreview(){ const r=previewText(m.setsText, m.mode); preview.textContent=r.txt; preview.className="preview"+(r.err?" err":""); }
   drawPreview();
 
-  // weight + unit + rest
-  sheet.appendChild(h("label",{class:"fl"},"Weight (default for sets without @) · Rest"));
-  const wrow=h("div",{class:"frow"});
-  wrow.appendChild(h("div",{}, h("input",{class:"tin", type:"number", inputmode:"decimal", value:String(m.weight), placeholder:"0", ...NOAC, oninput:e=>{ m.weight=parseFloat(e.target.value)||0; }})));
-  const unitSel=h("div",{});
-  unitSel.appendChild(seg([{v:"kg",label:"kg"},{v:"lb",label:"lb"},{v:"bw",label:"BW"}], m.unit, v=>{ m.unit=v; render_unit(); }));
-  function render_unit(){ const b=unitSel.querySelector(".seg"); b.replaceWith(seg([{v:"kg",label:"kg"},{v:"lb",label:"lb"},{v:"bw",label:"BW"}], m.unit, v=>{ m.unit=v; render_unit(); })); }
-  wrow.appendChild(h("div",{}, unitSel));
-  wrow.appendChild(h("div",{}, h("input",{class:"tin", type:"number", inputmode:"numeric", value:m.rest===""?"":String(m.rest), placeholder:"rest s", ...NOAC, oninput:e=>{ m.rest=e.target.value===""?"":(parseInt(e.target.value,10)||0); }})));
-  sheet.appendChild(wrow);
+  // weight + unit + rest  (bodyweight-only items skip weight/unit)
+  const clearZero = { onFocus:e=>{ if(e.target.value==="0") e.target.value=""; }, onBlur:e=>{ if(e.target.value.trim()===""){ e.target.value="0"; m.weight=0; } } };
+  if(bwOnly){
+    sheet.appendChild(h("label",{class:"fl"},"Rest"));
+    sheet.appendChild(h("input",{class:"tin", type:"number", inputmode:"numeric", value:m.rest===""?"":String(m.rest), placeholder:"rest s · blank = untracked", ...NOAC, oninput:e=>{ m.rest=e.target.value===""?"":(parseInt(e.target.value,10)||0); }}));
+  } else {
+    sheet.appendChild(h("label",{class:"fl"},"Weight (default for sets without @) · Rest"));
+    const wrow=h("div",{class:"frow"});
+    wrow.appendChild(h("div",{}, h("input",{class:"tin", type:"number", inputmode:"decimal", value:String(m.weight), placeholder:"0", ...NOAC, ...clearZero, oninput:e=>{ m.weight=parseFloat(e.target.value)||0; }})));
+    const unitSel=h("div",{});
+    unitSel.appendChild(seg([{v:"kg",label:"kg"},{v:"lb",label:"lb"},{v:"bw",label:"BW"}], m.unit, v=>{ m.unit=v; }));
+    wrow.appendChild(h("div",{}, unitSel));
+    wrow.appendChild(h("div",{}, h("input",{class:"tin", type:"number", inputmode:"numeric", value:m.rest===""?"":String(m.rest), placeholder:"rest s", ...NOAC, oninput:e=>{ m.rest=e.target.value===""?"":(parseInt(e.target.value,10)||0); }})));
+    sheet.appendChild(wrow);
+    sheet.appendChild(h("div",{class:"hint", style:"margin-top:4px"},"Leave rest blank if you don't track it — blank stays unlogged, not zero."));
+  }
 
   // date (per-entry override)
   sheet.appendChild(h("label",{class:"fl"},"Date"));
@@ -957,6 +1008,17 @@ function renderHistory(main){
   // filter by range
   const inRange=all.filter(e=> e.date>=state.hist.from && e.date<=state.hist.to);
 
+  // check-only exercises: frequency view instead of metric plotting
+  const isCheck = inRange.length>0 && inRange.every(e=> e.mode==="check");
+  if(isCheck){
+    const buckets=monthlyCounts(inRange, state.hist.from, state.hist.to);
+    const total=inRange.reduce((a,e)=>a+(e.count||1),0);
+    main.appendChild(h("div",{class:"cycleline", style:"margin-top:16px"}, "Frequency · "+total+" done across "+buckets.filter(b=>b.y>0).length+" month(s)"));
+    const box=h("div",{class:"chartbox"}); box.appendChild(buildBarChart(buckets, "times / month")); main.appendChild(box);
+    main.appendChild(historyDetailList(inRange));
+    return;
+  }
+
   // tag combinations present in range
   const comboMap={};
   inRange.forEach(e=>{ const key=(e.tags&&e.tags.length)?[...e.tags].sort().join(" · "):"(no tags)"; (comboMap[key]=comboMap[key]||[]).push(e); });
@@ -996,20 +1058,53 @@ function renderHistory(main){
 
   const metricLabel = state.hist.metric==="top"?"weight ("+(guessUnit(inRange))+")" : state.hist.metric==="best"?"best set" : "volume (first 3)";
   main.appendChild(chartBox(series, metricLabel));
-
-  // detail list
+  main.appendChild(historyDetailList(inRange));
+}
+function historyDetailList(inRange){
+  if(!inRange.length) return h("div",{class:"empty"},"No entries for this exercise in that date range.");
   const list=h("div",{class:"h-list"});
   inRange.slice().sort((a,b)=> a.date<b.date?1:a.date>b.date?-1:(b.createdAt||0)-(a.createdAt||0)).forEach(e=>{
     list.appendChild(h("div",{class:"h-row"},
       h("div",{class:"dt"}, fmtShort(e.date)),
       h("div",{class:"body"}, summarize(e), (e.tags&&e.tags.length)?h("span",{class:"tg"}, "  "+e.tags.join(" · ")):null, e.notes?h("div",{style:"color:var(--chalk-faint);font-size:12px;margin-top:2px"}, e.notes):null)));
   });
-  if(inRange.length) main.appendChild(list);
-  else main.appendChild(h("div",{class:"empty"},"No entries for this exercise in that date range."));
+  return list;
+}
+function monthlyCounts(entries, from, to){
+  const map={}; entries.forEach(e=>{ const m=e.date.slice(0,7); map[m]=(map[m]||0)+(e.count||1); });
+  const out=[]; let cur=from.slice(0,7); const end=to.slice(0,7); let guard=0;
+  while(cur<=end && guard++<120){ out.push({label:cur, y:map[cur]||0}); const [y,mo]=cur.split("-").map(Number); const nm=mo===12?(y+1)+"-01":y+"-"+String(mo+1).padStart(2,"0"); cur=nm; }
+  if(out.length>24){ return Object.keys(map).sort().map(k=>({label:k, y:map[k]})); }
+  return out;
 }
 function guessUnit(entries){ const e=entries.find(x=>x.unit && x.unit!=="bw"); return e?e.unit:"kg"; }
 
 /* ---- chart ---- */
+function buildBarChart(buckets, yLabel){
+  const W=340,H=200, mL=30,mR=10,mT=12,mB=34;
+  const NS="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(NS,"svg");
+  svg.setAttribute("viewBox","0 0 "+W+" "+H); svg.setAttribute("width","100%"); svg.setAttribute("style","display:block");
+  const el=(n,at)=>{ const x=document.createElementNS(NS,n); for(const k in at) x.setAttribute(k,at[k]); return x; };
+  const ymax=Math.max(1, buckets.reduce((a,b)=>Math.max(a,b.y),0));
+  const ph=H-mT-mB, pw=W-mL-mR;
+  const py=v=> H-mB - (v/ymax)*ph;
+  const ticks=Math.min(ymax,4);
+  for(let i=0;i<=ticks;i++){ const v=Math.round(ymax*i/ticks); const y=py(v);
+    svg.appendChild(el("line",{x1:mL,y1:y,x2:W-mR,y2:y,stroke:"#333a47","stroke-width":i===0?1:0.6}));
+    const tx=el("text",{x:mL-5,y:y+3,"text-anchor":"end","font-size":9,fill:"#8b93a1","font-family":"ui-monospace,monospace"}); tx.textContent=String(v); svg.appendChild(tx);
+  }
+  const n=buckets.length, gap=n>1?4:0, bw=(pw-gap*(n-1))/n;
+  const labelEvery=Math.ceil(n/6);
+  buckets.forEach((b,i)=>{
+    const x=mL+i*(bw+gap); const y=py(b.y); const hh=(H-mB)-y;
+    if(b.y>0) svg.appendChild(el("rect",{x:x,y:y,width:Math.max(1,bw),height:Math.max(0,hh),rx:2,fill:"#cf9a4f"}));
+    if(i%labelEvery===0){ const parts=b.label.split("-"); const lab=parts[1]+"/"+parts[0].slice(2);
+      const tx=el("text",{x:x+bw/2,y:H-mB+13,"text-anchor":"middle","font-size":8,fill:"#8b93a1","font-family":"ui-monospace,monospace"}); tx.textContent=lab; svg.appendChild(tx); }
+  });
+  const yl=el("text",{x:12,y:mT+2,"text-anchor":"start","font-size":9,fill:"#6d7481","font-family":"ui-monospace,monospace"}); yl.textContent=yLabel; svg.appendChild(yl);
+  return svg;
+}
 function chartBox(series, yLabel){
   const box=h("div",{class:"chartbox"});
   if(!series.length){ box.appendChild(h("div",{class:"empty", style:"margin:6px 0 2px"},"Nothing selected to plot.")); return box; }
@@ -1146,12 +1241,13 @@ function blankProgram(){ return { id:uid("prog"), name:"", active:false, created
 function openBuilder(id){ state.builder = id ? {mode:"edit", data:JSON.parse(JSON.stringify(getProgram(id)))} : {mode:"new", data:blankProgram()}; render(); window.scrollTo(0,0); }
 function rerenderBuilder(){ const m=$("#main"); m.innerHTML=""; m.appendChild(renderBuilder()); }
 
+function flagTog(label, on, onToggle){ return h("button",{class:"flagtog"+(on?" on":""), onClick:onToggle}, (on?"✓ ":"")+label); }
 function builderItem(b, it, ii){
   if(it.alt){
     const alt=h("div",{class:"b-alt"});
     alt.appendChild(h("div",{class:"b-alt-h"},
       h("span",{class:"altlbl"},"Alternatives ⋔"),
-      h("button",{class:"b-linkbtn", onClick:()=>{ const first=(it.options&&it.options[0])||{name:"",note:""}; it.alt=false; it.name=first.name||""; it.note=first.note||""; delete it.options; rerenderBuilder(); }},"make single"),
+      h("button",{class:"b-linkbtn", onClick:()=>{ const first=(it.options&&it.options[0])||{name:"",note:""}; it.alt=false; it.name=first.name||""; it.note=first.note||""; it.bw=first.bw||false; delete it.options; rerenderBuilder(); }},"make single"),
       h("button",{class:"iconbtn danger","aria-label":"Remove", style:"margin-left:auto", onClick:()=>{ b.items.splice(ii,1); rerenderBuilder(); }},"×")));
     alt.appendChild(h("input",{class:"b-input", style:"margin-top:8px", value:it.name||"", placeholder:"Slot label (optional, e.g. Shoulder prehab)", ...NOAC, oninput:e=>{ it.name=e.target.value; }}));
     (it.options||[]).forEach((o,oi)=>{
@@ -1161,10 +1257,17 @@ function builderItem(b, it, ii){
           (it.options.length>1)?h("button",{class:"iconbtn danger","aria-label":"Remove alternative", onClick:()=>{ it.options.splice(oi,1); rerenderBuilder(); }},"×"):null),
         h("details",{class:"b-note"},
           h("summary",{}, o.note&&o.note.trim()?"note •":"note"),
-          h("textarea",{placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ o.note=e.target.value; }}, o.note||""))));
+          h("textarea",{placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ o.note=e.target.value; }}, o.note||"")),
+        h("div",{class:"flagrow"}, flagTog("bodyweight", !!o.bw, ()=>{ o.bw=!o.bw; rerenderBuilder(); }))));
     });
     alt.appendChild(h("button",{class:"addbtn", style:"margin-top:8px", onClick:()=>{ it.options.push({id:uid("o"),name:"",note:""}); rerenderBuilder(); }},"+ Add alternative"));
     return h("div",{class:"b-item"}, alt);
+  }
+  const flags=h("div",{class:"flagrow"});
+  flags.appendChild(flagTog("check-only", !!it.simple, ()=>{ it.simple=!it.simple; if(it.simple) it.bw=false; rerenderBuilder(); }));
+  if(!it.simple){
+    flags.appendChild(flagTog("bodyweight", !!it.bw, ()=>{ it.bw=!it.bw; rerenderBuilder(); }));
+    flags.appendChild(h("button",{class:"b-linkbtn", style:"margin-left:auto", onClick:()=>{ it.alt=true; it.options=[{id:uid("o"),name:it.name||"",note:it.note||"",bw:it.bw||false},{id:uid("o"),name:"",note:""}]; it.name=""; it.note=""; it.bw=false; rerenderBuilder(); }},"+ make alternatives"));
   }
   return h("div",{class:"b-item"},
     h("div",{class:"ir"},
@@ -1172,8 +1275,8 @@ function builderItem(b, it, ii){
       h("button",{class:"iconbtn danger","aria-label":"Remove exercise", onClick:()=>{ b.items.splice(ii,1); rerenderBuilder(); }},"×")),
     h("details",{class:"b-note"},
       h("summary",{}, it.note && it.note.trim()?"note •":"note"),
-      h("textarea",{placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ it.note=e.target.value; }}, it.note||"")),
-    h("button",{class:"b-linkbtn", onClick:()=>{ it.alt=true; it.options=[{id:uid("o"),name:it.name||"",note:it.note||""},{id:uid("o"),name:"",note:""}]; it.name=""; it.note=""; rerenderBuilder(); }},"+ make alternatives"));
+      h("textarea",{placeholder:it.simple?"Notes…":"Cues, tempo, load…", ...NOAC, oninput:e=>{ it.note=e.target.value; }}, it.note||"")),
+    flags);
 }
 function renderBuilder(){
   const d=state.builder.data;
@@ -1229,13 +1332,15 @@ async function saveBuilder(){
   d.sessions.forEach(s=> s.blocks.forEach(b=>{
     b.items = b.items.map(it=>{
       if(it.alt){
-        const opts=(it.options||[]).filter(o=>o.name && o.name.trim()).map(o=>({id:o.id||uid("o"), name:o.name.trim(), note:(o.note||"").trim()}));
+        const opts=(it.options||[]).filter(o=>o.name && o.name.trim()).map(o=>{ const x={id:o.id||uid("o"), name:o.name.trim(), note:(o.note||"").trim()}; if(o.bw) x.bw=true; return x; });
         if(opts.length===0) return null;
-        if(opts.length===1) return {id:it.id, name:opts[0].name, note:opts[0].note};
+        if(opts.length===1){ const x={id:it.id, name:opts[0].name, note:opts[0].note}; if(opts[0].bw) x.bw=true; return x; }
         return {id:it.id, alt:true, name:(it.name||"").trim(), options:opts};
       }
       if(!it.name || !it.name.trim()) return null;
-      return {id:it.id, name:it.name.trim(), note:(it.note||"").trim()};
+      const x={id:it.id, name:it.name.trim(), note:(it.note||"").trim()};
+      if(it.simple) x.simple=true; else if(it.bw) x.bw=true;
+      return x;
     }).filter(Boolean);
   }));
   try{ await saveProgram(d); state.builder=null; render(); toast("Program saved"); }
