@@ -29,7 +29,13 @@
     line-height:1.4; padding-bottom:env(safe-area-inset-bottom); touch-action:manipulation; overflow-x:hidden}
   button,input,textarea,select,a,summary,label,.ex,.chip{touch-action:manipulation}
   input,textarea,button,select{font-family:inherit}
-  .wrap{max-width:640px; margin:0 auto; min-height:100vh; width:100%; overflow-x:clip}
+  input,textarea,select{max-width:100%}
+  .wrap{max-width:640px; margin:0 auto; min-height:100vh; width:100%; overflow-x:clip; position:relative}
+  main{overflow-x:clip}
+  .builder{overflow-x:clip}
+  .sheet{overflow-x:hidden}
+  .frow{min-width:0}
+  .frow > div{min-width:0}
 
   header{position:sticky; top:0; z-index:20; background:linear-gradient(180deg,var(--bg) 82%,transparent);
     padding:calc(14px + env(safe-area-inset-top)) 16px 10px;}
@@ -128,6 +134,7 @@
   /* alternatives */
   .altrow{display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:10px}
   .altrow .altpick{border:1px solid var(--oak-deep); background:#2f2818; color:var(--oak); font-size:13px; font-weight:600; padding:8px 12px; border-radius:9px; cursor:pointer}
+  .altrow .altpick.simple{border-color:var(--done); color:var(--done); background:#1e2a1e}
   .ex .name.static .altmark{color:var(--oak); font-family:var(--mono); font-size:13px}
   .entrline .sum .enm{font-weight:600; color:var(--chalk)}
   .formnote{font-size:12.5px; color:var(--chalk-dim); line-height:1.45; margin-top:8px; padding:9px 11px; background:var(--card); border:1px solid var(--line); border-radius:9px}
@@ -627,10 +634,10 @@ function lastEntryForName(name, excludeId){
 }
 function saveEntry(e){ return FB.setDoc(dref("logEntries", e.id), e); }
 function deleteEntry(id){ return FB.deleteDoc(dref("logEntries", id)); }
-function simpleEntryFor(p, dayId, itemId, date){ return state.allEntries.find(e=> e.programId===p.id && e.dayId===dayId && e.itemId===itemId && e.date===date && e.mode==="check"); }
+function simpleEntryFor(p, dayId, itemId, date, name){ return state.allEntries.find(e=> e.programId===p.id && e.dayId===dayId && e.itemId===itemId && e.date===date && e.mode==="check" && (name==null || e.name===name)); }
 async function bumpSimple(p, day, item, delta){
   const date=state.sessionDate;
-  const cur=simpleEntryFor(p, day.id, item.id, date);
+  const cur=simpleEntryFor(p, day.id, item.id, date, item.name);
   try{
     if(!cur){ if(delta<0) return;
       await saveEntry({ id:uid("e"), programId:p.id, dayId:day.id, itemId:item.id, date, name:item.name, mode:"check", count:1, createdAt:Date.now() });
@@ -784,7 +791,7 @@ function cardName(card, item){
 }
 function logAffordance(p, day, item, done){
   if(item.simple){
-    const cur=simpleEntryFor(p, day.id, item.id, state.sessionDate);
+    const cur=simpleEntryFor(p, day.id, item.id, state.sessionDate, item.name);
     if(cur) return h("div",{class:"simplerow"},
       h("button",{class:"stepbtn", onClick:()=> bumpSimple(p,day,item,-1)},"−"),
       h("span",{class:"stepval"}, cur.count>1?("Done ×"+cur.count):"Done"),
@@ -793,7 +800,10 @@ function logAffordance(p, day, item, done){
   }
   if(item.alt){
     const row=h("div",{class:"altrow"}, h("span",{class:"movelbl"}, done?"Log another":"Choose"));
-    (item.options||[]).forEach(o=> row.appendChild(h("button",{class:"altpick", onClick:()=> openEntryForm(p, day, {id:item.id, name:o.name, note:o.note, bw:o.bw}, null)}, o.name)));
+    (item.options||[]).forEach(o=>{
+      if(o.simple) row.appendChild(h("button",{class:"altpick simple", onClick:()=> bumpSimple(p, day, {id:item.id, name:o.name, simple:true}, 1)}, o.name+" ✓"));
+      else row.appendChild(h("button",{class:"altpick", onClick:()=> openEntryForm(p, day, {id:item.id, name:o.name, note:o.note, bw:o.bw}, null)}, o.name));
+    });
     return row;
   }
   return h("button",{class:"addlog", onClick:()=> openEntryForm(p, day, item, null)}, done?"+ Another set-entry":"+ Log");
@@ -828,8 +838,9 @@ function exerciseCard(p, day, item, w){
 function entryLine(p, day, item, e){
   const datePrefix = e.date!==state.sessionDate ? (fmtShort(e.date)+" · ") : "";
   if(e.mode==="check"){
+    const nm = item.alt ? (e.name+" · ") : "";
     return h("div",{class:"entrline", onClick:()=>{ if(confirm("Remove this done mark?")) deleteEntry(e.id).catch(()=>{}); }},
-      h("div",{class:"sum"}, datePrefix+summarize(e)), h("div",{class:"ed"}, "remove"));
+      h("div",{class:"sum"}, datePrefix+nm+summarize(e)), h("div",{class:"ed"}, "remove"));
   }
   const nm = item.alt ? h("span",{class:"enm"}, e.name+"  ") : null;
   return h("div",{class:"entrline", onClick:()=> openEntryForm(p, day, entryContext(item,e), e)},
@@ -934,15 +945,14 @@ function openEntryForm(program, day, item, existing){
     sheet.appendChild(h("label",{class:"fl"},"Rest"));
     sheet.appendChild(h("input",{class:"tin", type:"number", inputmode:"numeric", value:m.rest===""?"":String(m.rest), placeholder:"rest s · blank = untracked", ...NOAC, oninput:e=>{ m.rest=e.target.value===""?"":(parseInt(e.target.value,10)||0); }}));
   } else {
-    sheet.appendChild(h("label",{class:"fl"},"Weight (default for sets without @) · Rest"));
+    sheet.appendChild(h("label",{class:"fl"},"Weight & unit"));
     const wrow=h("div",{class:"frow"});
-    wrow.appendChild(h("div",{}, h("input",{class:"tin", type:"number", inputmode:"decimal", value:String(m.weight), placeholder:"0", ...NOAC, ...clearZero, oninput:e=>{ m.weight=parseFloat(e.target.value)||0; }})));
-    const unitSel=h("div",{});
-    unitSel.appendChild(seg([{v:"kg",label:"kg"},{v:"lb",label:"lb"},{v:"bw",label:"BW"}], m.unit, v=>{ m.unit=v; }));
-    wrow.appendChild(h("div",{}, unitSel));
-    wrow.appendChild(h("div",{}, h("input",{class:"tin", type:"number", inputmode:"numeric", value:m.rest===""?"":String(m.rest), placeholder:"rest s", ...NOAC, oninput:e=>{ m.rest=e.target.value===""?"":(parseInt(e.target.value,10)||0); }})));
+    wrow.appendChild(h("div",{style:"flex:1"}, h("input",{class:"tin", type:"number", inputmode:"decimal", value:String(m.weight), placeholder:"0", ...NOAC, ...clearZero, oninput:e=>{ m.weight=parseFloat(e.target.value)||0; }})));
+    wrow.appendChild(h("div",{style:"flex:0 0 auto"}, seg([{v:"kg",label:"kg"},{v:"lb",label:"lb"},{v:"bw",label:"BW"}], m.unit, v=>{ m.unit=v; })));
     sheet.appendChild(wrow);
-    sheet.appendChild(h("div",{class:"hint", style:"margin-top:4px"},"Leave rest blank if you don't track it — blank stays unlogged, not zero."));
+    sheet.appendChild(h("div",{class:"hint", style:"margin-top:4px"},"Weight is the default for sets logged without @."));
+    sheet.appendChild(h("label",{class:"fl"},"Rest"));
+    sheet.appendChild(h("input",{class:"tin", type:"number", inputmode:"numeric", value:m.rest===""?"":String(m.rest), placeholder:"rest s · blank = untracked", ...NOAC, oninput:e=>{ m.rest=e.target.value===""?"":(parseInt(e.target.value,10)||0); }}));
   }
 
   // date (per-entry override)
@@ -1239,7 +1249,7 @@ async function delProgram(id){
 function blankProgram(){ return { id:uid("prog"), name:"", active:false, createdAt:Date.now(), cycleDays:7, startDate:todayStr(),
   sessions:[ { id:uid("s"), name:"Day 1", blocks:[ { id:uid("b"), heading:"Session", items:[ {id:uid("i"),name:"",note:""} ] } ] } ] }; }
 function openBuilder(id){ state.builder = id ? {mode:"edit", data:JSON.parse(JSON.stringify(getProgram(id)))} : {mode:"new", data:blankProgram()}; render(); window.scrollTo(0,0); }
-function rerenderBuilder(){ const m=$("#main"); m.innerHTML=""; m.appendChild(renderBuilder()); }
+function rerenderBuilder(){ const y=window.scrollY; const m=$("#main"); m.innerHTML=""; m.appendChild(renderBuilder()); window.scrollTo(0,y); }
 
 function flagTog(label, on, onToggle){ return h("button",{class:"flagtog"+(on?" on":""), onClick:onToggle}, (on?"✓ ":"")+label); }
 function builderItem(b, it, ii){
@@ -1258,7 +1268,9 @@ function builderItem(b, it, ii){
         h("details",{class:"b-note"},
           h("summary",{}, o.note&&o.note.trim()?"note •":"note"),
           h("textarea",{placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ o.note=e.target.value; }}, o.note||"")),
-        h("div",{class:"flagrow"}, flagTog("bodyweight", !!o.bw, ()=>{ o.bw=!o.bw; rerenderBuilder(); }))));
+        h("div",{class:"flagrow"},
+          flagTog("bodyweight", !!o.bw, ()=>{ o.bw=!o.bw; if(o.bw) o.simple=false; rerenderBuilder(); }),
+          flagTog("check-only", !!o.simple, ()=>{ o.simple=!o.simple; if(o.simple) o.bw=false; rerenderBuilder(); }))));
     });
     alt.appendChild(h("button",{class:"addbtn", style:"margin-top:8px", onClick:()=>{ it.options.push({id:uid("o"),name:"",note:""}); rerenderBuilder(); }},"+ Add alternative"));
     return h("div",{class:"b-item"}, alt);
@@ -1332,9 +1344,9 @@ async function saveBuilder(){
   d.sessions.forEach(s=> s.blocks.forEach(b=>{
     b.items = b.items.map(it=>{
       if(it.alt){
-        const opts=(it.options||[]).filter(o=>o.name && o.name.trim()).map(o=>{ const x={id:o.id||uid("o"), name:o.name.trim(), note:(o.note||"").trim()}; if(o.bw) x.bw=true; return x; });
+        const opts=(it.options||[]).filter(o=>o.name && o.name.trim()).map(o=>{ const x={id:o.id||uid("o"), name:o.name.trim(), note:(o.note||"").trim()}; if(o.simple) x.simple=true; else if(o.bw) x.bw=true; return x; });
         if(opts.length===0) return null;
-        if(opts.length===1){ const x={id:it.id, name:opts[0].name, note:opts[0].note}; if(opts[0].bw) x.bw=true; return x; }
+        if(opts.length===1){ const x={id:it.id, name:opts[0].name, note:opts[0].note}; if(opts[0].simple) x.simple=true; else if(opts[0].bw) x.bw=true; return x; }
         return {id:it.id, alt:true, name:(it.name||"").trim(), options:opts};
       }
       if(!it.name || !it.name.trim()) return null;
