@@ -145,6 +145,14 @@
   .b-alt .altlbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--oak)}
   .b-alt .opt{margin-top:8px; border-top:1px dashed var(--line); padding-top:8px}
   .b-linkbtn{background:none; border:0; color:var(--oak-deep); font-family:var(--mono); font-size:11px; cursor:pointer; padding:6px 2px; text-decoration:underline; text-align:left}
+  .libpicklist{margin-top:10px; max-height:44vh; overflow-y:auto}
+  .libpick{display:flex; align-items:center; gap:6px; border-bottom:1px solid var(--line); padding:2px 0}
+  .libpick-main{flex:1; min-width:0; text-align:left; background:none; border:0; color:var(--chalk); padding:9px 4px; cursor:pointer}
+  .libpick-name{font-size:14px; font-weight:600}
+  .libpick-note{font-size:12px; color:var(--chalk-dim); margin-top:2px; line-height:1.4; overflow-wrap:anywhere}
+  .libitem{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; cursor:pointer}
+  .libitem-name{font-size:14px; font-weight:600}
+  .libitem-note{font-size:12.5px; color:var(--chalk-dim); margin-top:3px; line-height:1.4; overflow-wrap:anywhere}
   .entrline .sum{min-width:0; overflow-wrap:anywhere}
   .simplerow{display:flex; align-items:center; gap:12px; margin-top:10px}
   .simplerow .stepbtn{width:40px; height:38px; border:1px solid var(--line); background:var(--bg2); color:var(--chalk); font-size:20px; font-weight:600; border-radius:9px; cursor:pointer; line-height:1}
@@ -397,7 +405,7 @@ function seedProgram(){
 const state = {
   ready:false, loadError:null, user:null, uid:null,
   tab:"log",
-  programs:{}, allEntries:[], marks:{},
+  programs:{}, allEntries:[], marks:{}, library:{},
   _programsLoaded:false, _entriesLoaded:false, _migrated:false,
   logProgram:null, logSession:null, sessionDate:todayStr(), movePicker:null,
   builder:null,
@@ -437,7 +445,7 @@ async function boot(){
 function onAuth(u){
   state.ready=true;
   if(u){ state.user=u; state.uid=u.uid; startSubs(); }
-  else { state.user=null; state.uid=null; stopSubs(); state.programs={}; state.allEntries=[]; }
+  else { state.user=null; state.uid=null; stopSubs(); state.programs={}; state.allEntries=[]; state.library={}; }
   render();
 }
 async function doSignIn(){
@@ -481,6 +489,10 @@ function startSubs(){
     const m={}; snap.forEach(d=> m[d.id]=d.data());
     state.marks=m; render();
   }, err=>{}));
+  unsub.push(FB.onSnapshot(col("exerciseLibrary"), snap=>{
+    const m={}; snap.forEach(d=> m[d.id]=d.data());
+    state.library=m; render();
+  }, err=>{}));
 }
 function stopSubs(){ unsub.forEach(fn=>{ try{fn();}catch(e){} }); unsub=[]; }
 
@@ -501,6 +513,19 @@ const programList = () => Object.values(state.programs).sort((a,b)=>(a.createdAt
 const activePrograms = () => programList().filter(p=>p.active);
 const getProgram = id => state.programs[id];
 function saveProgram(p){ return FB.setDoc(dref("programs",p.id), p); }
+function libraryList(){ return Object.values(state.library).sort((a,b)=> a.name.localeCompare(b.name)); }
+function findLibraryByName(name){ const n=(name||"").trim().toLowerCase(); return Object.values(state.library).find(x=> x.name.trim().toLowerCase()===n); }
+function saveLibraryRecord(m){ return FB.setDoc(dref("exerciseLibrary", m.id), m); }
+function deleteLibraryItem(id){ delete state.library[id]; return FB.deleteDoc(dref("exerciseLibrary", id)).catch(()=>{}); }
+async function upsertLibrary(name, note){
+  name=(name||"").trim();
+  if(!name){ toast("Name it first"); return; }
+  note=(note||"").trim();
+  const existing=findLibraryByName(name);
+  const rec={ id: existing?existing.id:uid("lib"), name, note, createdAt: existing?existing.createdAt:Date.now(), updatedAt: Date.now() };
+  try{ await saveLibraryRecord(rec); toast(existing?"Updated in library":"Saved to library"); }
+  catch(e){ toast("Save failed"); }
+}
 function findItem(program,id){ for(const s of program.sessions) for(const b of s.blocks) for(const it of b.items) if(it.id===id) return it; return null; }
 const sessName=(p,id)=>{ const s=p.sessions.find(x=>x.id===id); return s?s.name:id; };
 
@@ -1195,6 +1220,15 @@ function renderPrograms(main){
         h("button",{class:"del", onClick:()=>delProgram(p.id)},"Delete"))));
   });
 
+  const lib=libraryList();
+  main.appendChild(h("section",{class:"block"},
+    h("div",{class:"eyebrow"},"Exercise library"),
+    h("div",{class:"hint", style:"margin:0 2px 8px"}, lib.length ? (lib.length+" saved · reusable when building programs") : "Save exercises here to reuse across programs"),
+    lib.length ? h("div",{}, lib.map(x=> h("div",{class:"libitem", onClick:()=> openLibraryForm(x)},
+      h("div",{class:"libitem-name"}, x.name), x.note?h("div",{class:"libitem-note"}, x.note):null)))
+      : h("div",{class:"empty", style:"margin-bottom:8px"}, "No saved exercises yet — tap ☆ save to library on any exercise while editing a program, or add one directly here."),
+    h("button",{class:"addbtn", onClick:()=> openLibraryForm(null)}, "+ Add exercise")));
+
   const n=state.allEntries.length;
   main.appendChild(h("section",{class:"block"},
     h("div",{class:"eyebrow"},"Data"),
@@ -1255,6 +1289,7 @@ function openBuilder(id){ state.builder = id ? {mode:"edit", data:JSON.parse(JSO
 function rerenderBuilder(){ const y=window.scrollY; const m=$("#main"); m.innerHTML=""; m.appendChild(renderBuilder()); window.scrollTo(0,y); }
 
 function flagTog(label, on, onToggle){ return h("button",{class:"flagtog"+(on?" on":""), onClick:onToggle}, (on?"✓ ":"")+label); }
+function saveLibBtn(obj){ return h("button",{class:"b-linkbtn", onClick:()=> upsertLibrary(obj.name, obj.note)}, "☆ save to library"); }
 function builderItem(b, it, ii){
   if(it.alt){
     const alt=h("div",{class:"b-alt"});
@@ -1273,13 +1308,15 @@ function builderItem(b, it, ii){
           h("textarea",{placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ o.note=e.target.value; }}, o.note||"")),
         h("div",{class:"flagrow"},
           flagTog("bodyweight", !!o.bw, ()=>{ o.bw=!o.bw; if(o.bw) o.simple=false; rerenderBuilder(); }),
-          flagTog("check-only", !!o.simple, ()=>{ o.simple=!o.simple; if(o.simple) o.bw=false; rerenderBuilder(); }))));
+          flagTog("check-only", !!o.simple, ()=>{ o.simple=!o.simple; if(o.simple) o.bw=false; rerenderBuilder(); }),
+          saveLibBtn(o))));
     });
     alt.appendChild(h("button",{class:"addbtn", style:"margin-top:8px", onClick:()=>{ it.options.push({id:uid("o"),name:"",note:""}); rerenderBuilder(); }},"+ Add alternative"));
     return h("div",{class:"b-item"}, alt);
   }
   const flags=h("div",{class:"flagrow"});
   flags.appendChild(flagTog("check-only", !!it.simple, ()=>{ it.simple=!it.simple; if(it.simple) it.bw=false; rerenderBuilder(); }));
+  flags.appendChild(saveLibBtn(it));
   if(!it.simple){
     flags.appendChild(flagTog("bodyweight", !!it.bw, ()=>{ it.bw=!it.bw; rerenderBuilder(); }));
     flags.appendChild(h("button",{class:"b-linkbtn", style:"margin-left:auto", onClick:()=>{ it.alt=true; it.options=[{id:uid("o"),name:it.name||"",note:it.note||"",bw:it.bw||false},{id:uid("o"),name:"",note:""}]; it.name=""; it.note=""; it.bw=false; rerenderBuilder(); }},"+ make alternatives"));
@@ -1292,6 +1329,52 @@ function builderItem(b, it, ii){
       h("summary",{}, it.note && it.note.trim()?"note •":"note"),
       h("textarea",{placeholder:it.simple?"Notes…":"Cues, tempo, load…", ...NOAC, oninput:e=>{ it.note=e.target.value; }}, it.note||"")),
     flags);
+}
+function openExercisePicker(b){
+  const sheet=$("#sheet-content"); sheet.innerHTML="";
+  sheet.appendChild(h("h2",{},"Add exercise"));
+  const search=h("input",{class:"tin", style:"margin-top:10px", placeholder:"Search your library…", ...NOAC, oninput:e=> draw(e.target.value)});
+  sheet.appendChild(search);
+  const list=h("div",{class:"libpicklist"});
+  sheet.appendChild(list);
+  function draw(q){
+    list.innerHTML="";
+    q=(q||"").trim().toLowerCase();
+    const all=libraryList();
+    const items=all.filter(x=> !q || x.name.toLowerCase().includes(q));
+    if(!items.length){
+      list.appendChild(h("div",{class:"empty", style:"margin-top:10px"}, all.length?"No matches.":"Your library is empty — save exercises from any program and they'll show up here."));
+      return;
+    }
+    items.forEach(x=> list.appendChild(h("div",{class:"libpick"},
+      h("button",{class:"libpick-main", onClick:()=>{ b.items.push({id:uid("i"), name:x.name, note:x.note||""}); closeSheet(); rerenderBuilder(); }},
+        h("div",{class:"libpick-name"}, x.name), x.note?h("div",{class:"libpick-note"}, x.note):null),
+      h("button",{class:"iconbtn danger","aria-label":"Remove from library", onClick:()=>{ if(confirm('Remove "'+x.name+'" from your library? Programs already using it are unaffected.')){ deleteLibraryItem(x.id); draw(search.value); } }},"×"))));
+  }
+  draw("");
+  sheet.appendChild(h("button",{class:"addbtn", style:"margin-top:12px", onClick:()=>{ b.items.push({id:uid("i"),name:"",note:""}); closeSheet(); rerenderBuilder(); }},"+ New exercise (blank)"));
+  sheet.appendChild(h("div",{class:"btns"}, h("button",{class:"close", onClick:closeSheet},"Cancel")));
+  openSheet();
+}
+function openLibraryForm(existing){
+  const m = existing ? {...existing} : {id:uid("lib"), name:"", note:""};
+  const sheet=$("#sheet-content"); sheet.innerHTML="";
+  sheet.appendChild(h("h2",{}, existing?"Edit exercise":"New exercise"));
+  sheet.appendChild(h("label",{class:"fl"},"Name"));
+  sheet.appendChild(h("input",{class:"tin", value:m.name, placeholder:"Exercise name", ...NOAC, oninput:e=>{ m.name=e.target.value; }}));
+  sheet.appendChild(h("label",{class:"fl"},"Notes"));
+  sheet.appendChild(h("textarea",{class:"tin", placeholder:"Cues, tempo, load…", ...NOAC, oninput:e=>{ m.note=e.target.value; }}, m.note||""));
+  const btns=h("div",{class:"btns"});
+  if(existing) btns.appendChild(h("button",{class:"del", onClick:()=>{ if(confirm('Remove "'+existing.name+'" from your library?')){ deleteLibraryItem(existing.id); closeSheet(); toast("Removed"); } }},"Delete"));
+  btns.appendChild(h("button",{class:"close", onClick:closeSheet},"Cancel"));
+  btns.appendChild(h("button",{class:"save", onClick:async()=>{
+    if(!m.name.trim()){ toast("Name it first"); return; }
+    m.name=m.name.trim(); m.note=(m.note||"").trim();
+    m.createdAt=existing?existing.createdAt:Date.now(); m.updatedAt=Date.now();
+    try{ await saveLibraryRecord(m); closeSheet(); toast("Saved"); }catch(e){ toast("Save failed"); }
+  }},"Save"));
+  sheet.appendChild(btns);
+  openSheet();
 }
 function renderBuilder(){
   const d=state.builder.data;
@@ -1328,7 +1411,7 @@ function renderBuilder(){
         h("input",{class:"b-input", value:b.heading, placeholder:"Heading (e.g. Handstand)", ...NOAC, oninput:e=>{ b.heading=e.target.value; }}),
         h("button",{class:"iconbtn danger","aria-label":"Remove heading", onClick:()=>{ s.blocks.splice(bi,1); rerenderBuilder(); }},"×")));
       b.items.forEach((it,ii)=>{ block.appendChild(builderItem(b, it, ii)); });
-      block.appendChild(h("button",{class:"addbtn", onClick:()=>{ b.items.push({id:uid("i"),name:"",note:""}); rerenderBuilder(); }},"+ Add exercise"));
+      block.appendChild(h("button",{class:"addbtn", onClick:()=> openExercisePicker(b)},"+ Add exercise"));
       sess.appendChild(block);
     });
     sess.appendChild(h("button",{class:"addbtn", onClick:()=>{ s.blocks.push({id:uid("b"),heading:"",items:[{id:uid("i"),name:"",note:""}]}); rerenderBuilder(); }},"+ Add heading"));
