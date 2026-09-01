@@ -29,7 +29,7 @@
     line-height:1.4; padding-bottom:env(safe-area-inset-bottom); touch-action:manipulation; overflow-x:hidden}
   button,input,textarea,select,a,summary,label,.ex,.chip{touch-action:manipulation}
   input,textarea,button,select{font-family:inherit}
-  input,textarea,select{max-width:100%}
+  input,textarea,select{max-width:100%; font-size:16px}
   .wrap{max-width:640px; margin:0 auto; min-height:100vh; width:100%; position:relative}
   main{overflow-x:hidden}
   .builder{overflow-x:hidden}
@@ -60,7 +60,7 @@
 
   .rowline{display:flex; align-items:center; gap:10px; margin-top:12px}
   .rowline label{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--chalk-faint)}
-  .fld{background:var(--card); border:1px solid var(--line); border-radius:10px; color:var(--chalk); font-size:15px; padding:10px 11px}
+  .fld{background:var(--card); border:1px solid var(--line); border-radius:10px; color:var(--chalk); font-size:16px; padding:10px 11px}
   .fld:focus{outline:2px solid var(--oak-deep); outline-offset:1px}
   input[type=date].fld{min-height:40px}
 
@@ -174,7 +174,7 @@
   /* builder */
   .builder{padding-bottom:80px}
   .b-field{display:block; margin:14px 0 4px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--chalk-faint)}
-  .b-input{width:100%; background:var(--card); border:1px solid var(--line); border-radius:10px; color:var(--chalk); font-size:15px; padding:11px 12px}
+  .b-input{width:100%; background:var(--card); border:1px solid var(--line); border-radius:10px; color:var(--chalk); font-size:16px; padding:11px 12px}
   .b-input:focus{outline:2px solid var(--oak-deep); outline-offset:1px}
   .b-sess{border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:12px; background:#1b1f27}
   .b-sess > .sh{display:flex; gap:8px; align-items:center}
@@ -190,7 +190,7 @@
   .b-note summary::-webkit-details-marker{display:none}
   .b-note summary::before{content:"\25B8 "; color:var(--chalk-faint)}
   .b-note[open] summary::before{content:"\25BE "}
-  .b-note textarea{width:100%; margin-top:6px; min-height:70px; background:var(--bg2); border:1px solid var(--line); border-radius:8px; color:var(--chalk); font-size:14px; line-height:1.5; padding:9px; resize:vertical}
+  .b-note textarea{width:100%; margin-top:6px; min-height:70px; background:var(--bg2); border:1px solid var(--line); border-radius:8px; color:var(--chalk); font-size:16px; line-height:1.5; padding:9px; resize:vertical}
   .b-row2{display:flex; gap:8px; margin-top:6px}
   .b-row2 > div{flex:1}
   .iconbtn{flex:0 0 auto; width:34px; height:34px; border:1px solid var(--line); background:var(--bg2); color:var(--chalk-dim); border-radius:9px; font-size:17px; cursor:pointer; line-height:1}
@@ -240,7 +240,7 @@
   .sheet h2{font-size:16px; margin:2px 0 2px; font-weight:600}
   .sheet .ctx{font-family:var(--mono); font-size:11px; color:var(--chalk-faint); letter-spacing:.04em; margin-bottom:10px}
   .sheet label.fl{display:block; margin:12px 0 5px; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--chalk-faint)}
-  .sheet input.tin, .sheet textarea.tin{width:100%; background:var(--card); border:1px solid var(--line); border-radius:10px; color:var(--chalk); font-size:15px; padding:11px 12px}
+  .sheet input.tin, .sheet textarea.tin{width:100%; background:var(--card); border:1px solid var(--line); border-radius:10px; color:var(--chalk); font-size:16px; padding:11px 12px}
   .sheet textarea.tin{min-height:64px; line-height:1.5; resize:vertical}
   .sheet input.tin:focus, .sheet textarea.tin:focus{outline:2px solid var(--oak-deep); outline-offset:1px}
   .frow{display:flex; gap:8px}
@@ -1383,6 +1383,37 @@ function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("sh
 /* ================= boot ================= */
 boot();
 if("serviceWorker" in navigator){ window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); }); }
+
+/* ---- on-device debug overlay: append ?debug to the URL to enable ---- */
+function initDebug(){
+  const panel=document.createElement("div");
+  panel.setAttribute("style","position:fixed;left:6px;right:6px;bottom:6px;z-index:99999;background:rgba(0,0,0,.9);color:#5f5;font:11px/1.35 ui-monospace,monospace;padding:8px;border:1px solid #3a3;border-radius:8px;max-height:42vh;overflow:auto;white-space:pre-wrap");
+  const bar=document.createElement("div"); bar.setAttribute("style","display:flex;gap:6px;margin-bottom:6px");
+  const out=document.createElement("div");
+  const mk=(t,fn)=>{ const b=document.createElement("button"); b.textContent=t; b.setAttribute("style","background:#3a3;color:#000;border:0;border-radius:5px;padding:6px 9px;font:600 11px ui-monospace,monospace"); b.onclick=fn; return b; };
+  function scan(){
+    const de=document.documentElement, vw=de.clientWidth;
+    const bad=[];
+    document.querySelectorAll("body *").forEach(el=>{
+      const r=el.getBoundingClientRect();
+      if(r.width>0 && (r.right>vw+0.5 || r.left<-0.5)) bad.push({el, over:Math.max(r.right-vw, -r.left)});
+    });
+    bad.sort((a,b)=>b.over-a.over);
+    const scale=window.visualViewport?window.visualViewport.scale.toFixed(2):"?";
+    let s="vw="+vw+"  scrollW="+de.scrollWidth+"  overflow="+(de.scrollWidth-vw)+"px  zoom="+scale+"\noffenders: "+bad.length+"\n";
+    bad.slice(0,8).forEach(x=>{ const e=x.el, c=(e.className&&e.className.toString().trim().replace(/\s+/g,"."))||""; s+="• "+e.tagName.toLowerCase()+(c?"."+c:"")+"  +"+x.over.toFixed(1)+"px\n"; });
+    out.textContent=s;
+  }
+  bar.appendChild(mk("scan overflow", scan));
+  bar.appendChild(mk("clear", ()=>{ out.textContent=""; }));
+  bar.appendChild(mk("hide", ()=> panel.remove()));
+  panel.appendChild(bar); panel.appendChild(out);
+  document.body.appendChild(panel);
+  window.addEventListener("error", ev=>{ out.textContent="⚠ "+(ev.message||ev.error||"error")+"\n"+out.textContent; });
+  window.addEventListener("resize", scan);
+  scan();
+}
+if(location.search.indexOf("debug")>=0){ if(document.body) initDebug(); else window.addEventListener("DOMContentLoaded", initDebug); }
 </script>
 </body>
 </html>
