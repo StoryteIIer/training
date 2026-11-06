@@ -221,7 +221,7 @@
   .tag button{border:0; background:none; color:var(--oak); font-size:14px; cursor:pointer; line-height:1; padding:0 2px}
   .tagsugg{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
   .tagsugg button{border:1px solid var(--line); background:var(--bg2); color:var(--chalk-dim); border-radius:999px; padding:5px 10px; font-size:12px; cursor:pointer}
-  .preview{font-family:var(--mono); font-size:12px; margin-top:6px; color:var(--chalk-dim)}
+  .preview{font-family:var(--mono); font-size:12px; line-height:1.4; min-height:1.4em; margin-top:6px; color:var(--chalk-dim)}
   .preview.err{color:var(--danger)}
   .hint{font-family:var(--mono); font-size:11px; color:var(--chalk-faint); margin-top:4px}
 
@@ -318,11 +318,19 @@ function backspaceAtCaret(input){
 function buildKeypad(input, onChange){
   const keys=["1","2","3","⌫","4","5","6","x","7","8","9","@",".","0","space"];
   const pad=h("div",{class:"keypad"});
+  // Track the caret ourselves so key taps never need to move focus
+  // (calling focus() on every tap can make iOS scroll the sheet under the finger).
+  let caret=input.value.length;
+  const sync=()=>{ if(document.activeElement===input && input.selectionStart!=null) caret=input.selectionStart; };
+  ["click","keyup","select","focus","touchend"].forEach(ev=> input.addEventListener(ev, ()=> setTimeout(sync,0)));
+  const noFocus=e=> e.preventDefault();   // keep the tap from stealing or shifting focus
   keys.forEach(k=>{
     const cls="key"+(k==="⌫"?" back":"")+(k==="space"?" wide":"")+(k==="x"||k==="@"||k==="."?" alt":"");
-    pad.appendChild(h("button",{type:"button", class:cls, onClick:()=>{
-      input.focus({preventScroll:true});
-      if(k==="⌫") backspaceAtCaret(input); else insertAtCaret(input, k==="space"?" ":k);
+    pad.appendChild(h("button",{type:"button", class:cls, onpointerdown:noFocus, onmousedown:noFocus, onClick:()=>{
+      const v=input.value; const c=Math.max(0, Math.min(caret, v.length));
+      if(k==="⌫"){ if(c>0){ input.value=v.slice(0,c-1)+v.slice(c); caret=c-1; } }
+      else { const t=(k==="space"?" ":k); input.value=v.slice(0,c)+t+v.slice(c); caret=c+t.length; }
+      if(document.activeElement===input){ try{ input.setSelectionRange(caret,caret); }catch(_){} }
       onChange();
     }}, k==="space"?"space":k));
   });
